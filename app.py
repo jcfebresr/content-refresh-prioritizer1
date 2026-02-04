@@ -46,9 +46,20 @@ def normalize_url(url):
     return url
 
 def process_data(gsc_df, ga4_df):
+    # Debug info
+    st.write("**Debug - Columnas GSC:**", gsc_df.columns.tolist())
+    st.write("**Debug - Primeras 3 filas GSC:**")
+    st.dataframe(gsc_df.head(3))
+    
+    st.write("**Debug - Columnas GA4:**", ga4_df.columns.tolist())
+    st.write("**Debug - Primeras 3 filas GA4:**")
+    st.dataframe(ga4_df.head(3))
+    
     # Limpiar datos
     gsc_df = clean_dataframe(gsc_df)
     ga4_df = clean_dataframe(ga4_df)
+    
+    st.write(f"**Filas después de limpiar:** GSC={len(gsc_df)}, GA4={len(ga4_df)}")
     
     # Renombrar columnas para facilitar
     gsc_df.columns = gsc_df.columns.str.strip()
@@ -58,33 +69,69 @@ def process_data(gsc_df, ga4_df):
     gsc_df['url_clean'] = gsc_df.iloc[:, 0].apply(normalize_url)
     ga4_df['url_clean'] = ga4_df.iloc[:, 0].apply(normalize_url)
     
-    # Convertir a numérico
-    gsc_df['position_current'] = pd.to_numeric(gsc_df.iloc[:, 1], errors='coerce')
-    gsc_df['position_previous'] = pd.to_numeric(gsc_df.iloc[:, 2], errors='coerce')
-    gsc_df['clicks_current'] = pd.to_numeric(gsc_df.iloc[:, 3], errors='coerce')
+    # Detectar columnas de posición
+    pos_cols = [col for col in gsc_df.columns if 'position' in col.lower()]
+    st.write(f"**Columnas posición:** {pos_cols}")
     
-    ga4_df['sessions_current'] = pd.to_numeric(ga4_df.iloc[:, 1], errors='coerce')
-    ga4_df['sessions_previous'] = pd.to_numeric(ga4_df.iloc[:, 2], errors='coerce')
-    ga4_df['users_current'] = pd.to_numeric(ga4_df.iloc[:, 3], errors='coerce')
-    ga4_df['bounce_rate'] = pd.to_numeric(ga4_df.iloc[:, 4], errors='coerce')
-    ga4_df['avg_duration'] = pd.to_numeric(ga4_df.iloc[:, 5], errors='coerce')
+    # Detectar columnas de sessions
+    session_cols = [col for col in ga4_df.columns if 'session' in col.lower() and 'duration' not in col.lower()]
+    st.write(f"**Columnas sessions:** {session_cols}")
+    
+    # Si no encuentra columnas, mostrar error
+    if len(pos_cols) < 2:
+        st.error("❌ No encuentro columnas de posición en GSC")
+        return None
+    
+    if len(session_cols) < 2:
+        st.error("❌ No encuentro columnas de sessions en GA4")
+        return None
+    
+    # Convertir a numérico
+    gsc_df['position_current'] = pd.to_numeric(gsc_df[pos_cols[0]], errors='coerce')
+    gsc_df['position_previous'] = pd.to_numeric(gsc_df[pos_cols[1]], errors='coerce')
+    
+    ga4_df['sessions_current'] = pd.to_numeric(ga4_df[session_cols[0]], errors='coerce')
+    ga4_df['sessions_previous'] = pd.to_numeric(ga4_df[session_cols[1]], errors='coerce')
+    
+    # Buscar bounce rate y duration
+    bounce_col = [col for col in ga4_df.columns if 'bounce' in col.lower()]
+    duration_col = [col for col in ga4_df.columns if 'duration' in col.lower()]
+    
+    if bounce_col:
+        ga4_df['bounce_rate'] = pd.to_numeric(ga4_df[bounce_col[0]], errors='coerce')
+    else:
+        ga4_df['bounce_rate'] = 0
+        
+    if duration_col:
+        ga4_df['avg_duration'] = pd.to_numeric(ga4_df[duration_col[0]], errors='coerce')
+    else:
+        ga4_df['avg_duration'] = 0
     
     # Merge
     merged = gsc_df.merge(ga4_df, on='url_clean', how='inner')
+    st.write(f"**URLs después de merge:** {len(merged)}")
     
     # Filtrar posiciones 5-20
+    before_filter = len(merged)
     merged = merged[(merged['position_current'] >= 5) & (merged['position_current'] <= 20)]
+    st.write(f"**URLs en posición 5-20:** {len(merged)} (antes: {before_filter})")
     
     if len(merged) == 0:
+        st.warning("No hay URLs en el rango 5-20")
         return None
     
     # Calcular promedio de sessions
     avg_sessions = merged['sessions_current'].mean()
+    st.write(f"**Promedio sessions:** {avg_sessions:.2f}")
     
     # Filtrar URLs con poco tráfico
-    merged = merged[merged['sessions_current'] >= (avg_sessions * 0.5)]
+    threshold = avg_sessions * 0.5
+    before_traffic = len(merged)
+    merged = merged[merged['sessions_current'] >= threshold]
+    st.write(f"**URLs con tráfico > {threshold:.2f}:** {len(merged)} (antes: {before_traffic})")
     
     if len(merged) == 0:
+        st.warning("Todas las URLs tienen poco tráfico")
         return None
     
     # Calcular tendencias
@@ -98,7 +145,7 @@ def process_data(gsc_df, ga4_df):
     # Score final
     merged['score'] = merged['normalized_traffic'] * 0.6 + merged['normalized_position'] * 0.4
     
-    # Ordenar: score descendente, luego priorizar pérdida de tráfico
+    # Ordenar
     merged['losing_traffic'] = merged['sessions_change'] < 0
     merged = merged.sort_values(['score', 'losing_traffic'], ascending=[False, False])
     
@@ -131,7 +178,7 @@ if gsc_file and ga4_file:
                 results = process_data(gsc_df, ga4_df)
                 
                 if results is None or len(results) == 0:
-                    st.error("❌ No se encontraron oportunidades en rango 5-20 con suficiente tráfico")
+                    st.error("❌ No se encontraron oportunidades")
                 else:
                     st.success(f"✅ {len(results)} oportunidades encontradas")
                     
@@ -181,17 +228,3 @@ if gsc_file and ga4_file:
                 
 else:
     st.info("👆 Sube ambos archivos CSV para comenzar")
-    
-    with st.expander("📖 ¿Cómo exportar los datos?"):
-        st.markdown("""
-        **Google Search Console:**
-        1. Ve a Performance → Pages
-        2. Compara últimos 28 días vs 28 días anteriores
-        3. Exporta CSV
-        
-        **Google Analytics 4:**
-        1. Ve a Reports → Engagement → Landing page
-        2. Compara últimos 28 días vs 28 días anteriores
-        3. Añade métricas: Sessions, Users, Bounce rate, Avg session duration
-        4. Exporta CSV
-        """)
