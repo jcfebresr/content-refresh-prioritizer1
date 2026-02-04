@@ -78,14 +78,12 @@ def is_url_row(first_cell):
     return False
 
 def clean_ga4_csv(raw_content):
-    """Limpia CSV de GA4 con doble header"""
+    """Limpia CSV de GA4 con formato pivotado"""
     
     lines = raw_content.split('\n')
-    
-    # Remover líneas que empiezan con #
     lines = [line for line in lines if not line.startswith('#')]
     
-    # Encontrar la línea que contiene "Landing page + query string"
+    # Encontrar header
     header_line_idx = None
     for i, line in enumerate(lines):
         if 'landing page' in line.lower():
@@ -93,34 +91,66 @@ def clean_ga4_csv(raw_content):
             break
     
     if header_line_idx is None:
-        raise ValueError("No encuentro header 'Landing page + query string'")
+        raise ValueError("No encuentro header")
     
-    # Tomar desde esa línea en adelante
     clean_lines = lines[header_line_idx:]
     clean_csv = '\n'.join(clean_lines)
     
-    # Detectar delimitador
     first_line = clean_lines[0]
     delimiter = ',' if first_line.count(',') > first_line.count(';') else ';'
     
-    # Leer CSV con delimitador correcto
+    # Leer CSV completo
     df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
     
-    # DEBUG: Mostrar primeras filas ANTES de filtrar
-    st.write("**DEBUG - GA4 antes de filtrar URLs:**")
-    st.write(f"Total filas: {len(df)}")
-    st.write("Primeras 10 celdas de columna 1:")
-    st.write(df.iloc[:10, 0].tolist())
+    st.write("**DEBUG - Primeras 20 filas completas:**")
+    st.dataframe(df.head(20))
     
-    # Filtrar solo URLs válidas
-    df_filtered = df[df.iloc[:, 0].apply(is_url_row)]
+    # El formato tiene 3 filas por URL:
+    # Fila 1: URL en col 0, "% change" en col 1
+    # Fila 2: vacío en col 0, fecha actual en col 1, datos actuales
+    # Fila 3: vacío en col 0, fecha anterior en col 1, datos anteriores
     
-    st.write(f"**DEBUG - Después de filtrar: {len(df_filtered)} filas**")
-    if len(df_filtered) > 0:
-        st.write("Primeras 3 URLs:")
-        st.write(df_filtered.iloc[:3, 0].tolist())
+    # Encontrar filas que tienen URL (primera columna NO vacía y NO es fecha)
+    url_rows = []
+    i = 0
+    while i < len(df):
+        first_col = str(df.iloc[i, 0]).strip()
+        
+        # Si la primera columna tiene contenido y no es fecha ni "% change"
+        if first_col and first_col not in ['', 'nan'] and '202' not in first_col and '% change' not in first_col.lower():
+            # Esta es una fila de URL
+            # Verificar que las siguientes 2 filas existen
+            if i + 2 < len(df):
+                second_col = str(df.iloc[i, 1]).strip()
+                
+                # Si la segunda columna es "% change", este es el formato correcto
+                if '% change' in second_col.lower():
+                    url = first_col
+                    # La fila i+1 tiene datos actuales (col 1 = fecha actual)
+                    # La fila i+2 tiene datos anteriores (col 1 = fecha anterior)
+                    
+                    url_rows.append({
+                        'url': url,
+                        'sessions_current': df.iloc[i+1, 3],  # Sessions está en col 3
+                        'sessions_previous': df.iloc[i+2, 3],
+                        'bounce_current': df.iloc[i+1, 5],  # Bounce rate en col 5
+                        'bounce_previous': df.iloc[i+2, 5]
+                    })
+                    
+                    i += 3  # Saltar las 3 filas
+                    continue
+        
+        i += 1
     
-    return df_filtered
+    # Crear nuevo dataframe
+    new_df = pd.DataFrame(url_rows)
+    
+    st.write(f"**DEBUG - URLs extraídas: {len(new_df)}**")
+    if len(new_df) > 0:
+        st.write("Primeras 3:")
+        st.dataframe(new_df.head(3))
+    
+    return new_df
 
 def process_data(gsc_df, ga4_df, show_debug=False):
     
