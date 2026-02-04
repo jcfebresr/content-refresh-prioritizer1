@@ -68,39 +68,47 @@ def clean_ga4_csv(raw_content):
     if header_idx is None:
         raise ValueError("No encuentro header 'Landing page'")
     
-    # Usar esa línea como header (skiprows = todas las anteriores)
-    # Reconstruir CSV limpio
     clean_lines = lines[header_idx:]
     clean_csv = '\n'.join(clean_lines)
     
     # Leer CSV
     df = pd.read_csv(StringIO(clean_csv), on_bad_lines='skip')
     
-    # Extraer URLs y datos
-    # Formato: cada 3 filas = URL (col0 tiene URL), datos actuales (col0 vacía), datos anteriores (col0 vacía)
+    st.write(f"**DEBUG - Total filas CSV: {len(df)}**")
+    st.write("**DEBUG - Primeras 15 filas columna 0:**")
+    for i in range(min(15, len(df))):
+        st.write(f"Fila {i}: '{df.iloc[i, 0]}'")
     
+    # Extraer URLs
     url_data = []
-    i = 0
-    while i < len(df):
-        first_col = str(df.iloc[i, 0]).strip()
+    
+    for i in range(len(df)):
+        first_col = str(df.iloc[i, 0])
         
-        # Si col 0 tiene contenido y NO es fecha/% change
-        if (first_col and 
-            first_col not in ['', 'nan', 'NaN'] and
-            '/' in first_col and  # Las URLs tienen /
-            not any(month in first_col.lower() for month in ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'])):
+        # Detectar si es una URL:
+        # - Empieza con / (ruta relativa)
+        # - O contiene dominio.com/
+        # - NO está vacía
+        # - NO es "nan"
+        
+        is_url = False
+        
+        if first_col and first_col not in ['nan', 'NaN', '']:
+            first_col_clean = first_col.strip()
             
-            url = first_col
+            # Es URL si empieza con / o contiene http
+            if first_col_clean.startswith('/') or 'http' in first_col_clean.lower():
+                is_url = True
+        
+        if is_url:
+            url = first_col.strip()
             
-            # Siguiente fila (i+1): datos actuales
-            # Siguiente fila (i+2): datos anteriores
+            # Siguiente fila: datos actuales
+            # Siguiente fila: datos anteriores
             if i + 2 < len(df):
-                # Sessions está en columna "Sessions" (index 3)
-                # Bounce rate está en "Bounce rate" (index 5)
-                
-                sessions_current = clean_number(df.iloc[i+1, 3])
+                sessions_current = clean_number(df.iloc[i+1, 3])  # Columna "Sessions"
                 sessions_previous = clean_number(df.iloc[i+2, 3])
-                bounce_current = clean_number(df.iloc[i+1, 5]) * 100  # Convertir a %
+                bounce_current = clean_number(df.iloc[i+1, 5]) * 100  # "Bounce rate"
                 
                 url_data.append({
                     'url': url,
@@ -109,14 +117,11 @@ def clean_ga4_csv(raw_content):
                     'bounce_rate': bounce_current
                 })
                 
-                i += 3
-                continue
-        
-        i += 1
+                st.write(f"✅ Extraída: {url} (sessions: {sessions_current})")
+    
+    st.write(f"**DEBUG - Total URLs extraídas: {len(url_data)}**")
     
     return pd.DataFrame(url_data)
-
-def process_data(gsc_df, ga4_df):
     
     # Limpiar GSC
     gsc_df = gsc_df[~gsc_df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
