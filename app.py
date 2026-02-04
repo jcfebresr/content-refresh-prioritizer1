@@ -37,8 +37,15 @@ def clean_dataframe(df):
     """Limpia filas con % change, Grand total, etc."""
     if len(df) > 0:
         first_col = df.iloc[:, 0].astype(str)
-        mask = ~first_col.str.contains('Grand total|^total$|^%', case=False, regex=True, na=False)
+        
+        # Eliminar filas que NO son URLs válidas (fechas, totales, etc)
+        # Una URL válida contiene http o al menos un punto y barra
+        mask = (
+            ~first_col.str.contains('Grand total|^total$|^%|jan |feb |mar |apr |may |jun |jul |aug |sep |oct |nov |dec ', case=False, regex=True, na=False) &
+            (first_col.str.contains('http|/', case=False, na=False) | first_col.str.startswith('/'))
+        )
         df = df[mask]
+        
         df = df.dropna(how='all')
         df = df[df.iloc[:, 0].notna()]
         df = df[df.iloc[:, 0].astype(str).str.strip() != '']
