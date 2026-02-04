@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from groq import Groq
-import os
+from io import StringIO
 
 st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", layout="wide")
 
@@ -35,23 +35,31 @@ Genera un insight que diga QUÉ hacer específicamente para mejorar."""
 
 def clean_dataframe(df):
     """Limpia filas con % change, Grand total, etc."""
-    # Solo eliminar si la primera columna contiene textos específicos de resumen
     if len(df) > 0:
-        # Convertir primera columna a string y buscar patrones
         first_col = df.iloc[:, 0].astype(str)
-        
-        # Eliminar filas que son claramente resúmenes/totales
         mask = ~first_col.str.contains('Grand total|^total$|^%', case=False, regex=True, na=False)
         df = df[mask]
-        
-        # Eliminar filas completamente vacías
         df = df.dropna(how='all')
-        
-        # Eliminar filas donde la primera columna está vacía (URLs vacías)
         df = df[df.iloc[:, 0].notna()]
         df = df[df.iloc[:, 0].astype(str).str.strip() != '']
-    
     return df
+
+def normalize_url(url):
+    """Normaliza URLs para hacer match entre GSC y GA4"""
+    url = str(url).lower().strip()
+    if url.endswith('/'):
+        url = url[:-1]
+    return url
+
+def process_data(gsc_df, ga4_df):
+    # Debug info
+    st.write("**Debug - Columnas GSC:**", gsc_df.columns.tolist())
+    st.write("**Debug - Primeras 3 filas GSC:**")
+    st.dataframe(gsc_df.head(3))
+    
+    st.write("**Debug - Columnas GA4:**", ga4_df.columns.tolist())
+    st.write("**Debug - Primeras 3 filas GA4:**")
+    st.dataframe(ga4_df.head(3))
     
     # Limpiar datos
     gsc_df = clean_dataframe(gsc_df)
@@ -108,6 +116,12 @@ def clean_dataframe(df):
     # Merge
     merged = gsc_df.merge(ga4_df, on='url_clean', how='inner')
     st.write(f"**URLs después de merge:** {len(merged)}")
+    
+    if len(merged) == 0:
+        st.warning("❌ No hay URLs que coincidan entre GSC y GA4. Verifica que ambos archivos sean del mismo sitio.")
+        st.write("**Ejemplo URLs GSC:**", gsc_df['url_clean'].head(3).tolist())
+        st.write("**Ejemplo URLs GA4:**", ga4_df['url_clean'].head(3).tolist())
+        return None
     
     # Filtrar posiciones 5-20
     before_filter = len(merged)
@@ -187,7 +201,6 @@ if gsc_file and ga4_file:
                 delimiter = ',' if clean_csv.count(',') > clean_csv.count(';') else ';'
                 
                 # Leer con pandas
-                from io import StringIO
                 ga4_df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
                 
                 results = process_data(gsc_df, ga4_df)
