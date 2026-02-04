@@ -167,64 +167,28 @@ if gsc_file and ga4_file:
     if st.button("🚀 Analizar", type="primary"):
         with st.spinner("Analizando datos..."):
             try:
+                # Leer GSC normal
                 gsc_df = pd.read_csv(gsc_file, encoding='utf-8')
                 
+                # Leer GA4 saltando basura
                 ga4_file.seek(0)
-                sample = ga4_file.read(1024).decode('utf-8')
-                ga4_file.seek(0)
-                delimiter = ',' if sample.count(',') > sample.count(';') else ';'
-                ga4_df = pd.read_csv(ga4_file, encoding='utf-8', delimiter=delimiter, on_bad_lines='skip')
+                lines = ga4_file.read().decode('utf-8').split('\n')
                 
-                results = process_data(gsc_df, ga4_df)
+                # Encontrar primera línea con datos reales (columnas)
+                start_line = 0
+                for i, line in enumerate(lines):
+                    # Buscar línea que empiece con comillas o letras (no símbolos)
+                    if line and not line.startswith('#') and not line.startswith('-') and ('landing' in line.lower() or 'page' in line.lower() or 'session' in line.lower()):
+                        start_line = i
+                        break
                 
-                if results is None or len(results) == 0:
-                    st.error("❌ No se encontraron oportunidades")
-                else:
-                    st.success(f"✅ {len(results)} oportunidades encontradas")
-                    
-                    top_url = results.iloc[0]
-                    
-                    st.markdown("---")
-                    st.subheader("🏆 TOP Oportunidad")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("Score", f"{top_url['score']:.1f}/100")
-                    
-                    with col2:
-                        st.metric("Posición", 
-                                 f"{int(top_url['position_current'])}", 
-                                 f"{top_url['position_change']:+.1f}%")
-                    
-                    with col3:
-                        st.metric("Sessions", 
-                                 f"{int(top_url['sessions_current'])}", 
-                                 f"{top_url['sessions_change']:+.1f}%")
-                    
-                    with col4:
-                        st.metric("Bounce Rate", f"{top_url['bounce_rate']:.1f}%")
-                    
-                    st.markdown(f"**URL:** `{top_url['url_clean']}`")
-                    
-                    with st.spinner("Generando análisis con IA..."):
-                        metrics = {
-                            'position': int(top_url['position_current']),
-                            'position_change': f"{top_url['position_change']:+.1f}%",
-                            'sessions': int(top_url['sessions_current']),
-                            'sessions_change': top_url['sessions_change'],
-                            'bounce_rate': top_url['bounce_rate'],
-                            'avg_duration': top_url['avg_duration']
-                        }
-                        insight = get_groq_insight(top_url['url_clean'], metrics)
-                    
-                    st.info(f"💡 **Insight IA:** {insight}")
-                    
-                    st.markdown("---")
-                    st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs prioritarias** con la versión Pro")
-                    
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                # Crear CSV limpio
+                clean_lines = lines[start_line:]
+                clean_csv = '\n'.join(clean_lines)
                 
-else:
-    st.info("👆 Sube ambos archivos CSV para comenzar")
+                # Detectar delimitador
+                delimiter = ',' if clean_csv.count(',') > clean_csv.count(';') else ';'
+                
+                # Leer con pandas
+                from io import StringIO
+                ga4_df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
