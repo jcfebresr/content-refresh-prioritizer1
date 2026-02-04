@@ -134,10 +134,8 @@ def scrape_url_metadata(url, target_domain=None):
         # Enlaces internos SOLO DEL CONTENIDO
         internal_links = 0
         if target_domain:
-            # Intentar encontrar el contenido principal
             content_area = None
             
-            # Buscar por orden de prioridad
             content_selectors = [
                 soup.find('article'),
                 soup.find('main'),
@@ -150,20 +148,16 @@ def scrape_url_metadata(url, target_domain=None):
                     content_area = selector
                     break
             
-            # Si no encontramos área específica, usar body pero excluir nav/footer/header/aside
             if not content_area:
                 content_area = soup.find('body')
             
             if content_area:
-                # Excluir elementos de navegación/footer
                 for unwanted in content_area.find_all(['nav', 'footer', 'header', 'aside']):
                     unwanted.decompose()
                 
-                # Contar enlaces internos en el contenido limpio
                 all_links = content_area.find_all('a', href=True)
                 for link in all_links:
                     href = link['href']
-                    # Es interno si contiene el dominio o empieza con /
                     if target_domain in href or (href.startswith('/') and not href.startswith('//')):
                         internal_links += 1
         
@@ -234,11 +228,111 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     
     return recommendations
 
-get_google_top_10
+def get_google_top_10(keyword, debug=False):
+    """Scrape top 10 de Google para una keyword"""
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=10&hl=es"
+        
+        if debug:
+            st.write("**Debug - URL de búsqueda:**", url)
+            st.write("**Debug - Headers enviados:**", headers)
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        if debug:
+            st.write("**Debug - Status code:**", response.status_code)
+            st.write("**Debug - Content length:**", len(response.content))
+            st.write("**Debug - Primeros 1000 caracteres del HTML:**")
+            st.code(response.text[:1000])
+        
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        results = []
+        
+        # Método 1: divs con clase 'g'
+        divs_g = soup.find_all('div', class_='g')
+        
+        if debug:
+            st.write(f"**Debug - Divs con clase 'g' encontrados:** {len(divs_g)}")
+        
+        for result in divs_g:
+            link = result.find('a', href=True)
+            if link and link['href'].startswith('http'):
+                results.append(link['href'])
+                if debug:
+                    st.write(f"- Encontrado: {link['href']}")
+                if len(results) >= 10:
+                    break
+        
+        # Método 2: si no funcionó, buscar por cite tags
+        if len(results) == 0:
+            if debug:
+                st.write("**Debug - Método 1 falló, probando método 2 (cite tags)**")
+            
+            cites = soup.find_all('cite')
+            
+            if debug:
+                st.write(f"**Debug - Cite tags encontrados:** {len(cites)}")
+            
+            for cite in cites:
+                parent_a = cite.find_parent('a')
+                if parent_a and parent_a.get('href', '').startswith('http'):
+                    results.append(parent_a['href'])
+                    if debug:
+                        st.write(f"- Encontrado: {parent_a['href']}")
+                    if len(results) >= 10:
+                        break
+        
+        # Método 3: buscar todos los enlaces que parezcan resultados
+        if len(results) == 0:
+            if debug:
+                st.write("**Debug - Método 2 falló, probando método 3 (todos los enlaces)**")
+            
+            all_links = soup.find_all('a', href=True)
+            
+            if debug:
+                st.write(f"**Debug - Total de enlaces encontrados:** {len(all_links)}")
+                st.write("**Debug - Primeros 10 enlaces:**")
+                for i, link in enumerate(all_links[:10]):
+                    st.write(f"{i+1}. {link.get('href', '')[:100]}")
+            
+            for link in all_links:
+                href = link.get('href', '')
+                if href.startswith('http') and 'google.com' not in href and 'youtube.com' not in href:
+                    results.append(href)
+                    if debug:
+                        st.write(f"- Encontrado: {href}")
+                    if len(results) >= 10:
+                        break
+        
+        if debug:
+            st.write(f"**Debug - Total URLs extraídas:** {len(results)}")
+        
+        return results[:10]
+        
+    except Exception as e:
+        if debug:
+            st.error(f"**Debug - Error capturado:** {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+        else:
+            st.error(f"Error al obtener resultados de Google: {str(e)}")
+        return []
 
 def process_gsc_data(df):
     
-    # Limpiar
     df = df[~df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
     df = df[df.iloc[:, 0].notna()]
     
@@ -246,7 +340,6 @@ def process_gsc_data(df):
         st.error("❌ Sin datos después de limpiar")
         return None
     
-    # Detectar columnas
     pos_cols = [col for col in df.columns if 'position' in col.lower()]
     click_cols = [col for col in df.columns if 'click' in col.lower()]
     imp_cols = [col for col in df.columns if 'impression' in col.lower()]
@@ -261,7 +354,6 @@ def process_gsc_data(df):
         st.error("❌ Faltan columnas necesarias en GSC")
         return None
     
-    # Procesar
     df['url'] = df.iloc[:, 0]
     df['position_current'] = df[pos_cols[0]].apply(clean_number)
     df['position_previous'] = df[pos_cols[1]].apply(clean_number)
@@ -270,7 +362,6 @@ def process_gsc_data(df):
     df['impressions_current'] = df[imp_cols[0]].apply(clean_number) if imp_cols else 0
     df['ctr_current'] = df[ctr_cols[0]].apply(clean_number) if ctr_cols else 0
     
-    # Filtrar rango 5-20
     df = df[df['position_current'] > 0]
     df = df[(df['position_current'] >= 5) & (df['position_current'] <= 20)]
     
@@ -278,7 +369,6 @@ def process_gsc_data(df):
         st.warning("⚠️ No hay URLs en rango 5-20")
         return None
     
-    # Filtrar tráfico mínimo
     df = df[df['clicks_current'] > 0]
     avg_clicks = df['clicks_current'].mean()
     df = df[df['clicks_current'] >= (avg_clicks * 0.3)]
@@ -287,11 +377,9 @@ def process_gsc_data(df):
         st.warning("⚠️ No hay URLs con suficiente tráfico")
         return None
     
-    # Calcular tendencias
     df['position_change'] = ((df['position_previous'] - df['position_current']) / df['position_previous']) * 100
     df['clicks_change'] = ((df['clicks_current'] - df['clicks_previous']) / df['clicks_previous']) * 100
     
-    # Normalizar y calcular score
     if df['clicks_current'].max() > df['clicks_current'].min():
         df['normalized_traffic'] = (df['clicks_current'] - df['clicks_current'].min()) / (df['clicks_current'].max() - df['clicks_current'].min()) * 100
     else:
@@ -300,13 +388,11 @@ def process_gsc_data(df):
     df['normalized_position'] = (20 - df['position_current']) / 15 * 100
     df['score'] = df['normalized_traffic'] * 0.6 + df['normalized_position'] * 0.4
     
-    # Ordenar
     df['losing_traffic'] = df['clicks_change'] < 0
     df = df.sort_values(['score', 'losing_traffic'], ascending=[False, False])
     
     return df
 
-# UI
 # UI
 st.title("🎯 Content Refresh Prioritizer")
 st.markdown("Descubre qué páginas optimizar primero basándote en Google Search Console")
@@ -325,7 +411,6 @@ if 'current_metadata' not in st.session_state:
 gsc_file = st.file_uploader("📊 Google Search Console CSV", type=['csv'])
 
 if gsc_file:
-    # Solo analizar si no hay resultados en session_state
     if st.session_state.analysis_results is None:
         if st.button("🚀 Analizar", type="primary"):
             with st.spinner("Analizando datos..."):
@@ -336,11 +421,9 @@ if gsc_file:
                     if results is None or len(results) == 0:
                         st.error("❌ No se encontraron oportunidades")
                     else:
-                        # Guardar en session state
                         st.session_state.analysis_results = results
                         st.session_state.top_url_data = results.iloc[0]
                         
-                        # Analizar metadata
                         top_url = st.session_state.top_url_data
                         target_domain = extract_domain(top_url['url'])
                         st.session_state.current_metadata = scrape_url_metadata(top_url['url'], target_domain)
@@ -352,7 +435,6 @@ if gsc_file:
                     import traceback
                     st.code(traceback.format_exc())
     
-    # Mostrar resultados si existen
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         top_url = st.session_state.top_url_data
@@ -360,7 +442,6 @@ if gsc_file:
         
         st.success(f"✅ {len(results)} oportunidades encontradas")
         
-        # Botón para reiniciar análisis
         if st.button("🔄 Nuevo análisis"):
             st.session_state.analysis_results = None
             st.session_state.top_url_data = None
@@ -390,7 +471,6 @@ if gsc_file:
         
         st.markdown(f"**URL:** `{top_url['url']}`")
         
-        # Análisis On-Page
         if current_metadata and current_metadata['success']:
             st.markdown("---")
             st.subheader("🔍 Análisis On-Page")
@@ -416,7 +496,6 @@ if gsc_file:
                 st.metric("FAQs", current_metadata['faqs_count'])
                 st.metric("Enlaces Internos", current_metadata['internal_links'])
             
-            # Insight IA
             st.markdown("---")
             st.subheader("💡 Recomendaciones IA")
             
@@ -433,7 +512,6 @@ if gsc_file:
             
             st.info(insight)
             
-            # Enlaces internos
             st.markdown("---")
             st.subheader("🔗 Recomendaciones de Enlaces Internos")
             
@@ -446,17 +524,14 @@ if gsc_file:
                 for idx, rec in enumerate(internal_link_recs, 1):
                     st.write(f"{idx}. `{rec['url']}` (Posición: #{rec['position']}, Score: {rec['score']}/100)")
             
-            # Comparativa con Top 10
             st.markdown("---")
             st.subheader("📊 Comparativa vs Top 10 de Google")
             
-            # Input de keyword SIN auto-rerun
             keyword_input = st.text_input(
                 "Ingresa la keyword principal de esta URL:",
                 placeholder="Ej: tipos de colirios con y sin receta"
             )
             
-           # Botón para iniciar comparativa
             if keyword_input:
                 if st.button("🔍 Comparar con Top 10", type="primary"):
                     with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
@@ -468,7 +543,6 @@ if gsc_file:
                         comparison_data = []
                         competitors_metadata = []
                         
-                        # Tu URL
                         comparison_data.append({
                             'Posición': f"#{int(top_url['position_current'])} (TU URL)",
                             'Title Length': current_metadata['title_length'],
@@ -481,7 +555,6 @@ if gsc_file:
                             'FAQs': current_metadata['faqs_count']
                         })
                         
-                        # Top 10
                         progress_bar = st.progress(0)
                         for idx, url in enumerate(top_10_urls[:10], 1):
                             with st.spinner(f"Analizando posición #{idx}..."):
@@ -505,10 +578,8 @@ if gsc_file:
                         
                         progress_bar.empty()
                         
-                        # Tabla de métricas
                         comparison_df = pd.DataFrame(comparison_data)
                         
-                        # Calcular promedios
                         avg_row = {
                             'Posición': '📊 PROMEDIO TOP 10',
                             'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
@@ -525,9 +596,8 @@ if gsc_file:
                         
                         st.dataframe(comparison_df, use_container_width=True)
                         
-                        # Comparativa de Headings
                         st.markdown("---")
-                        st.subheader("📑 Comparativa de Headings: Tu URL vs Competidores")
+                        st.subheader("📑 Comparativa de Headings")
                         
                         tab1, tab2, tab3 = st.tabs(["H1", "H2", "H3"])
                         
@@ -554,7 +624,7 @@ if gsc_file:
                             else:
                                 st.warning("⚠️ No tienes H2")
                             
-                            st.write("**H2 de Competidores (Top 3, primeros 5 H2 c/u):**")
+                            st.write("**H2 de Competidores (Top 3):**")
                             for idx, meta in enumerate(competitors_metadata[:3], 1):
                                 if meta['success'] and meta.get('h2_tags'):
                                     st.write(f"**Posición #{idx}:**")
@@ -569,11 +639,9 @@ if gsc_file:
                             else:
                                 st.info("No tienes H3")
                             
-                            st.write("**Promedio H3 en competidores:**")
                             avg_h3 = sum([len(m.get('h3_tags', [])) for m in competitors_metadata]) / len(competitors_metadata)
                             st.metric("Promedio H3 en Top 10", f"{avg_h3:.1f}")
                         
-                        # Recomendaciones
                         st.markdown("---")
                         st.subheader("💡 GAPs vs Competencia")
                         
@@ -581,35 +649,34 @@ if gsc_file:
                         
                         avg_words = avg_row['Word Count']
                         if current_metadata['word_count'] < avg_words * 0.8:
-                            recs.append(f"📝 **Contenido corto:** Tienes {current_metadata['word_count']} palabras vs {avg_words} promedio. Amplía +{int(avg_words - current_metadata['word_count'])} palabras.")
+                            recs.append(f"📝 **Contenido:** {current_metadata['word_count']} palabras vs {avg_words}. Amplía +{int(avg_words - current_metadata['word_count'])}.")
                         
                         avg_h2 = avg_row['H2']
                         if current_metadata['h2_count'] < avg_h2 * 0.7:
-                            recs.append(f"📑 **H2 insuficientes:** {current_metadata['h2_count']} H2 vs {avg_h2:.0f} promedio. Añade {int(avg_h2 - current_metadata['h2_count'])} H2 más.")
+                            recs.append(f"📑 **H2:** {current_metadata['h2_count']} vs {avg_h2:.0f}. Añade {int(avg_h2 - current_metadata['h2_count'])} más.")
                         
                         avg_h3 = avg_row['H3']
                         if current_metadata['h3_count'] < avg_h3 * 0.7:
-                            recs.append(f"📑 **H3 insuficientes:** {current_metadata['h3_count']} H3 vs {avg_h3:.0f} promedio. Añade subsecciones.")
+                            recs.append(f"📑 **H3:** {current_metadata['h3_count']} vs {avg_h3:.0f}. Añade subsecciones.")
                         
                         avg_schemas = avg_row['Schemas']
                         if current_metadata['schemas_count'] < avg_schemas:
-                            recs.append(f"🏷️ **Schema:** {current_metadata['schemas_count']} schemas vs {avg_schemas:.0f} promedio. Añade más markup.")
+                            recs.append(f"🏷️ **Schema:** {current_metadata['schemas_count']} vs {avg_schemas:.0f}. Añade markup.")
                         
                         avg_faqs = avg_row['FAQs']
                         if current_metadata['faqs_count'] == 0 and avg_faqs > 0:
-                            recs.append(f"❓ **FAQs:** 0 FAQs vs {avg_faqs:.0f} promedio. Añade sección FAQ con schema.")
+                            recs.append(f"❓ **FAQs:** 0 vs {avg_faqs:.0f}. Añade sección FAQ.")
                         
                         if not recs:
-                            st.success("✅ Tu página está bien optimizada")
+                            st.success("✅ Bien optimizada")
                         else:
                             for rec in recs:
                                 st.warning(rec)
                     
                     else:
-                        st.error("❌ No se pudo obtener el top 10 de Google.")
-                        st.info("💡 Intenta con otra keyword.")
+                        st.error("❌ No se pudo obtener el top 10.")
             
-            with st.expander("📄 Ver detalles completos de tu URL"):
+            with st.expander("📄 Ver detalles completos"):
                 st.write("**Title:**", current_metadata['title'])
                 st.write("**Meta Description:**", current_metadata['description'])
                 
@@ -618,33 +685,18 @@ if gsc_file:
                     for h1 in current_metadata['h1_tags']:
                         st.write(f"- {h1}")
                 
-                if current_metadata['h2_tags']:
-                    st.write("**H2 (primeros 10):**")
-                    for h2 in current_metadata['h2_tags'][:10]:
-                        st.write(f"- {h2}")
-                
                 if current_metadata['schemas']:
-                    st.write("**Schema Markup:**")
-                    st.write(", ".join(current_metadata['schemas']))
-                
-                if current_metadata['faqs']:
-                    st.write("**FAQs encontradas:**")
-                    for faq in current_metadata['faqs']:
-                        st.write(f"- {faq}")
-        
-        else:
-            st.warning("⚠️ No se pudo analizar la página")
+                    st.write("**Schema:**", ", ".join(current_metadata['schemas']))
         
         st.markdown("---")
-        st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs prioritarias con la versión Pro**")
+        st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs con la versión Pro**")
                 
 else:
-    st.info("👆 Sube tu archivo CSV de Google Search Console para comenzar")
+    st.info("👆 Sube tu CSV de GSC")
     
-    with st.expander("📖 ¿Cómo exportar desde GSC?"):
+    with st.expander("📖 ¿Cómo exportar?"):
         st.markdown("""
-        1. Ve a **Performance → Pages**
-        2. Click en **Compare** (arriba derecha)
-        3. Selecciona: Últimos 28 días vs 28 días anteriores
-        4. Click **Export** → CSV
+        1. **Performance → Pages**
+        2. **Compare** → Últimos 28 días vs anteriores
+        3. **Export** → CSV
         """)
