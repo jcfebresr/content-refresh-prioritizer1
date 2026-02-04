@@ -234,50 +234,7 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     
     return recommendations
 
-def get_google_top_10(keyword):
-    """Scrape top 10 de Google para una keyword"""
-    
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
-        
-        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=10&hl=es"
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'lxml')
-        
-        results = []
-        
-        # Método 1: divs con clase 'g'
-        for result in soup.find_all('div', class_='g'):
-            link = result.find('a', href=True)
-            if link and link['href'].startswith('http'):
-                results.append(link['href'])
-                if len(results) >= 10:
-                    break
-        
-        # Método 2: si no funcionó, buscar por cite tags
-        if len(results) == 0:
-            for cite in soup.find_all('cite'):
-                parent_a = cite.find_parent('a')
-                if parent_a and parent_a.get('href', '').startswith('http'):
-                    results.append(parent_a['href'])
-                    if len(results) >= 10:
-                        break
-        
-        return results[:10]
-        
-    except Exception as e:
-        st.error(f"Error al obtener resultados de Google: {str(e)}")
-        return []
+get_google_top_10
 
 def process_gsc_data(df):
     
@@ -350,8 +307,12 @@ def process_gsc_data(df):
     return df
 
 # UI
+# UI
 st.title("🎯 Content Refresh Prioritizer")
 st.markdown("Descubre qué páginas optimizar primero basándote en Google Search Console")
+
+# Debug mode
+debug_mode = st.sidebar.checkbox("🐛 Modo Debug", value=False)
 
 # Inicializar session state
 if 'analysis_results' not in st.session_state:
@@ -495,11 +456,11 @@ if gsc_file:
                 placeholder="Ej: tipos de colirios con y sin receta"
             )
             
-            # Botón para iniciar comparativa
+           # Botón para iniciar comparativa
             if keyword_input:
                 if st.button("🔍 Comparar con Top 10", type="primary"):
                     with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
-                        top_10_urls = get_google_top_10(keyword_input)
+                        top_10_urls = get_google_top_10(keyword_input, debug=debug_mode)
                     
                     if top_10_urls and len(top_10_urls) > 0:
                         st.info(f"Analizando {len(top_10_urls)} URLs del top 10...")
