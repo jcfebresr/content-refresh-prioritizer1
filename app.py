@@ -119,13 +119,24 @@ with col2:
 if gsc_file and ga4_file:
     if st.button("🚀 Analizar", type="primary"):
         with st.spinner("Analizando datos..."):
-            gsc_df = pd.read_csv(gsc_file)
-            ga4_df = pd.read_csv(ga4_file)
-            
-            results = process_data(gsc_df, ga4_df)
-            
-            if results is None or len(results) == 0:
-                st.error("❌ No se encontraron oportunidades en rango 5-20 con suficiente tráfico")
+            try:
+                # Leer GSC con manejo de errores
+                gsc_df = pd.read_csv(gsc_file, encoding='utf-8')
+                
+                # Leer GA4 detectando delimitador automáticamente
+                ga4_file.seek(0)  # Reset file pointer
+                sample = ga4_file.read(1024).decode('utf-8')
+                ga4_file.seek(0)
+                
+                # Detectar delimitador (coma, punto y coma, tab)
+                delimiter = ',' if sample.count(',') > sample.count(';') else ';'
+                
+                ga4_df = pd.read_csv(ga4_file, encoding='utf-8', delimiter=delimiter, on_bad_lines='skip')
+                
+            except Exception as e:
+                st.error(f"❌ Error leyendo archivos: {str(e)}")
+                st.info("Asegúrate de exportar los CSVs en formato UTF-8 desde Google")
+                st.stop()
             else:
                 st.success(f"✅ {len(results)} oportunidades encontradas")
                 
