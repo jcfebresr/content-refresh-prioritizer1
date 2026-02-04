@@ -185,6 +185,8 @@ def process_data(gsc_df, ga4_df):
 st.title("🎯 Content Refresh Prioritizer")
 st.markdown("Descubre qué páginas optimizar primero para maximizar tu tráfico orgánico")
 
+show_debug = st.checkbox("🔍 Modo debug", value=False)
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -203,11 +205,22 @@ if gsc_file and ga4_file:
                 raw_content = ga4_file.read().decode('utf-8')
                 ga4_df = clean_ga4_csv(raw_content)
                 
+                if show_debug:
+                    st.write("**DEBUG GA4:**")
+                    st.write(f"URLs extraídas: {len(ga4_df)}")
+                    if len(ga4_df) > 0:
+                        st.dataframe(ga4_df.head(5))
+                
                 if len(ga4_df) == 0:
                     st.error("❌ No se pudieron extraer URLs del CSV de GA4")
                     st.stop()
                 
                 results = process_data(gsc_df, ga4_df)
+                
+                if show_debug and results is not None:
+                    st.write("**DEBUG RESULTS:**")
+                    st.write(f"Oportunidades: {len(results)}")
+                    st.dataframe(results.head(3))
                 
                 if results is None or len(results) == 0:
                     st.error("❌ No se encontraron oportunidades")
