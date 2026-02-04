@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from groq import Groq
-from io import StringIO
-import re
 
 st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", layout="wide")
 
@@ -15,9 +13,10 @@ def get_groq_insight(url, metrics):
 URL: {url}
 Posición actual: {metrics['position']}
 Cambio posición: {metrics['position_change']}
-Sessions: {metrics['sessions']}
-Cambio sessions: {metrics['sessions_change']}%
-Bounce rate: {metrics['bounce_rate']:.1f}%
+Clicks: {metrics['clicks']}
+Cambio clicks: {metrics['clicks_change']}%
+Impressions: {metrics['impressions']}
+CTR: {metrics['ctr']:.1f}%
 
 Genera un insight que diga QUÉ hacer específicamente para mejorar."""
 
@@ -31,17 +30,6 @@ Genera un insight que diga QUÉ hacer específicamente para mejorar."""
     except:
         return "Análisis no disponible"
 
-def normalize_url(url):
-    if pd.isna(url):
-        return ""
-    url = str(url).strip()
-    url = re.sub(r'^https?://', '', url)
-    url = re.sub(r'^www\.', '', url)
-    url = url.lower()
-    if url.endswith('/'):
-        url = url[:-1]
-    return url
-
 def clean_number(val):
     if pd.isna(val):
         return 0
@@ -53,179 +41,88 @@ def clean_number(val):
     except:
         return 0
 
-def clean_ga4_csv(raw_content):
-    """Procesa CSV de GA4 con doble header y formato pivotado"""
+def process_gsc_data(df):
     
-    lines = [line for line in raw_content.split('\n') if not line.startswith('#') and line.strip()]
+    # Limpiar
+    df = df[~df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
+    df = df[df.iloc[:, 0].notna()]
     
-    # Encontrar línea con "Landing page"
-    header_idx = None
-    for i, line in enumerate(lines):
-        if 'landing page' in line.lower():
-            header_idx = i
-            break
-    
-    if header_idx is None:
-        raise ValueError("No encuentro header 'Landing page'")
-    
-    clean_lines = lines[header_idx:]
-    clean_csv = '\n'.join(clean_lines)
-    
-    # Leer CSV
-    df = pd.read_csv(StringIO(clean_csv), on_bad_lines='skip')
-    
-    st.write(f"**DEBUG - Total filas CSV: {len(df)}**")
-    st.write("**DEBUG - Primeras 15 filas columna 0:**")
-    for i in range(min(15, len(df))):
-        st.write(f"Fila {i}: '{df.iloc[i, 0]}'")
-    
-    # Extraer URLs
-    url_data = []
-    
-    for i in range(len(df)):
-        first_col = str(df.iloc[i, 0])
-        
-        # Detectar si es una URL:
-        # - Empieza con / (ruta relativa)
-        # - O contiene dominio.com/
-        # - NO está vacía
-        # - NO es "nan"
-        
-        is_url = False
-        
-        if first_col and first_col not in ['nan', 'NaN', '']:
-            first_col_clean = first_col.strip()
-            
-            # Es URL si empieza con / o contiene http
-            if first_col_clean.startswith('/') or 'http' in first_col_clean.lower():
-                is_url = True
-        
-        if is_url:
-            url = first_col.strip()
-            
-            # Siguiente fila: datos actuales
-            # Siguiente fila: datos anteriores
-            if i + 2 < len(df):
-                sessions_current = clean_number(df.iloc[i+1, 3])  # Columna "Sessions"
-                sessions_previous = clean_number(df.iloc[i+2, 3])
-                bounce_current = clean_number(df.iloc[i+1, 5]) * 100  # "Bounce rate"
-                
-                url_data.append({
-                    'url': url,
-                    'sessions_current': sessions_current,
-                    'sessions_previous': sessions_previous,
-                    'bounce_rate': bounce_current
-                })
-                
-                st.write(f"✅ Extraída: {url} (sessions: {sessions_current})")
-    
-    st.write(f"**DEBUG - Total URLs extraídas: {len(url_data)}**")
-    
-    return pd.DataFrame(url_data)
-    
-    # Limpiar GSC
-    gsc_df = gsc_df[~gsc_df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
-    gsc_df = gsc_df[gsc_df.iloc[:, 0].notna()]
-    
-    if len(gsc_df) == 0 or len(ga4_df) == 0:
+    if len(df) == 0:
         st.error("❌ Sin datos después de limpiar")
         return None
     
-    # Normalizar URLs
-    gsc_df['url_clean'] = gsc_df.iloc[:, 0].apply(normalize_url)
-    ga4_df['url_clean'] = ga4_df['url'].apply(normalize_url)
+    # Detectar columnas
+    pos_cols = [col for col in df.columns if 'position' in col.lower()]
+    click_cols = [col for col in df.columns if 'click' in col.lower()]
+    imp_cols = [col for col in df.columns if 'impression' in col.lower()]
+    ctr_cols = [col for col in df.columns if 'ctr' in col.lower()]
     
-    # Detectar columnas GSC
-    pos_cols = [col for col in gsc_df.columns if 'position' in col.lower()]
     pos_cols = sorted(pos_cols, key=lambda x: 'previous' in x.lower())
+    click_cols = sorted(click_cols, key=lambda x: 'previous' in x.lower())
+    imp_cols = sorted(imp_cols, key=lambda x: 'previous' in x.lower())
+    ctr_cols = sorted(ctr_cols, key=lambda x: 'previous' in x.lower())
     
-    if len(pos_cols) < 2:
-        st.error("❌ Faltan columnas de posición en GSC")
+    if len(pos_cols) < 2 or len(click_cols) < 2:
+        st.error("❌ Faltan columnas necesarias en GSC")
         return None
     
-    # Procesar métricas
-    gsc_df['position_current'] = gsc_df[pos_cols[0]].apply(clean_number)
-    gsc_df['position_previous'] = gsc_df[pos_cols[1]].apply(clean_number)
+    # Procesar
+    df['url'] = df.iloc[:, 0]
+    df['position_current'] = df[pos_cols[0]].apply(clean_number)
+    df['position_previous'] = df[pos_cols[1]].apply(clean_number)
+    df['clicks_current'] = df[click_cols[0]].apply(clean_number)
+    df['clicks_previous'] = df[click_cols[1]].apply(clean_number)
+    df['impressions_current'] = df[imp_cols[0]].apply(clean_number) if imp_cols else 0
+    df['ctr_current'] = df[ctr_cols[0]].apply(clean_number) if ctr_cols else 0
     
-    # Merge
-    merged = gsc_df.merge(ga4_df, on='url_clean', how='inner')
+    # Filtrar rango 5-20
+    df = df[df['position_current'] > 0]
+    df = df[(df['position_current'] >= 5) & (df['position_current'] <= 20)]
     
-    if len(merged) == 0:
-        st.error("❌ No hay URLs coincidentes entre GSC y GA4")
-        return None
-    
-    # Filtrar
-    merged = merged[merged['position_current'] > 0]
-    merged = merged[(merged['position_current'] >= 5) & (merged['position_current'] <= 20)]
-    
-    if len(merged) == 0:
+    if len(df) == 0:
         st.warning("⚠️ No hay URLs en rango 5-20")
         return None
     
-    merged = merged[merged['sessions_current'] > 0]
-    avg_sessions = merged['sessions_current'].mean()
-    merged = merged[merged['sessions_current'] >= (avg_sessions * 0.3)]
+    # Filtrar tráfico mínimo
+    df = df[df['clicks_current'] > 0]
+    avg_clicks = df['clicks_current'].mean()
+    df = df[df['clicks_current'] >= (avg_clicks * 0.3)]
     
-    if len(merged) == 0:
+    if len(df) == 0:
         st.warning("⚠️ No hay URLs con suficiente tráfico")
         return None
     
-    # Calcular
-    merged['position_change'] = ((merged['position_previous'] - merged['position_current']) / merged['position_previous']) * 100
-    merged['sessions_change'] = ((merged['sessions_current'] - merged['sessions_previous']) / merged['sessions_previous']) * 100
+    # Calcular tendencias
+    df['position_change'] = ((df['position_previous'] - df['position_current']) / df['position_previous']) * 100
+    df['clicks_change'] = ((df['clicks_current'] - df['clicks_previous']) / df['clicks_previous']) * 100
     
-    if merged['sessions_current'].max() > merged['sessions_current'].min():
-        merged['normalized_traffic'] = (merged['sessions_current'] - merged['sessions_current'].min()) / (merged['sessions_current'].max() - merged['sessions_current'].min()) * 100
+    # Normalizar y calcular score
+    if df['clicks_current'].max() > df['clicks_current'].min():
+        df['normalized_traffic'] = (df['clicks_current'] - df['clicks_current'].min()) / (df['clicks_current'].max() - df['clicks_current'].min()) * 100
     else:
-        merged['normalized_traffic'] = 50
+        df['normalized_traffic'] = 50
     
-    merged['normalized_position'] = (20 - merged['position_current']) / 15 * 100
-    merged['score'] = merged['normalized_traffic'] * 0.6 + merged['normalized_position'] * 0.4
-    merged['losing_traffic'] = merged['sessions_change'] < 0
-    merged = merged.sort_values(['score', 'losing_traffic'], ascending=[False, False])
+    df['normalized_position'] = (20 - df['position_current']) / 15 * 100
+    df['score'] = df['normalized_traffic'] * 0.6 + df['normalized_position'] * 0.4
     
-    return merged
+    # Ordenar: priorizar pérdida de clicks
+    df['losing_traffic'] = df['clicks_change'] < 0
+    df = df.sort_values(['score', 'losing_traffic'], ascending=[False, False])
+    
+    return df
 
 # UI
 st.title("🎯 Content Refresh Prioritizer")
-st.markdown("Descubre qué páginas optimizar primero para maximizar tu tráfico orgánico")
+st.markdown("Descubre qué páginas optimizar primero basándote en Google Search Console")
 
-show_debug = st.checkbox("🔍 Modo debug", value=False)
+gsc_file = st.file_uploader("📊 Google Search Console CSV", type=['csv'])
 
-col1, col2 = st.columns(2)
-
-with col1:
-    gsc_file = st.file_uploader("📊 Google Search Console CSV", type=['csv'])
-    
-with col2:
-    ga4_file = st.file_uploader("📈 Google Analytics 4 CSV", type=['csv'])
-
-if gsc_file and ga4_file:
+if gsc_file:
     if st.button("🚀 Analizar", type="primary"):
         with st.spinner("Analizando datos..."):
             try:
                 gsc_df = pd.read_csv(gsc_file, encoding='utf-8', on_bad_lines='skip')
-                
-                ga4_file.seek(0)
-                raw_content = ga4_file.read().decode('utf-8')
-                ga4_df = clean_ga4_csv(raw_content)
-                
-                if show_debug:
-                    st.write("**DEBUG GA4:**")
-                    st.write(f"URLs extraídas: {len(ga4_df)}")
-                    if len(ga4_df) > 0:
-                        st.dataframe(ga4_df.head(5))
-                
-                if len(ga4_df) == 0:
-                    st.error("❌ No se pudieron extraer URLs del CSV de GA4")
-                    st.stop()
-                
-                results = process_data(gsc_df, ga4_df)
-                
-                if show_debug and results is not None:
-                    st.write("**DEBUG RESULTS:**")
-                    st.write(f"Oportunidades: {len(results)}")
-                    st.dataframe(results.head(3))
+                results = process_gsc_data(gsc_df)
                 
                 if results is None or len(results) == 0:
                     st.error("❌ No se encontraron oportunidades")
@@ -248,24 +145,25 @@ if gsc_file and ga4_file:
                                  f"{top_url['position_change']:+.1f}%")
                     
                     with col3:
-                        st.metric("Sessions", 
-                                 f"{int(top_url['sessions_current'])}", 
-                                 f"{top_url['sessions_change']:+.1f}%")
+                        st.metric("Clicks", 
+                                 f"{int(top_url['clicks_current'])}", 
+                                 f"{top_url['clicks_change']:+.1f}%")
                     
                     with col4:
-                        st.metric("Bounce Rate", f"{top_url['bounce_rate']:.1f}%")
+                        st.metric("CTR", f"{top_url['ctr_current']:.1f}%")
                     
-                    st.markdown(f"**URL:** `{top_url['url_clean']}`")
+                    st.markdown(f"**URL:** `{top_url['url']}`")
                     
                     with st.spinner("Generando análisis con IA..."):
                         metrics = {
                             'position': int(top_url['position_current']),
                             'position_change': f"{top_url['position_change']:+.1f}%",
-                            'sessions': int(top_url['sessions_current']),
-                            'sessions_change': top_url['sessions_change'],
-                            'bounce_rate': top_url['bounce_rate']
+                            'clicks': int(top_url['clicks_current']),
+                            'clicks_change': top_url['clicks_change'],
+                            'impressions': int(top_url['impressions_current']),
+                            'ctr': top_url['ctr_current']
                         }
-                        insight = get_groq_insight(top_url['url_clean'], metrics)
+                        insight = get_groq_insight(top_url['url'], metrics)
                     
                     st.info(f"💡 **Insight IA:** {insight}")
                     
@@ -278,4 +176,12 @@ if gsc_file and ga4_file:
                 st.code(traceback.format_exc())
                 
 else:
-    st.info("👆 Sube ambos archivos CSV para comenzar")
+    st.info("👆 Sube tu archivo CSV de Google Search Console para comenzar")
+    
+    with st.expander("📖 ¿Cómo exportar desde GSC?"):
+        st.markdown("""
+        1. Ve a **Performance → Pages**
+        2. Click en **Compare** (arriba derecha)
+        3. Selecciona: Últimos 28 días vs 28 días anteriores
+        4. Click **Export** → CSV
+        """)
