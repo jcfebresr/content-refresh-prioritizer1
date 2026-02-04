@@ -120,71 +120,65 @@ if gsc_file and ga4_file:
     if st.button("🚀 Analizar", type="primary"):
         with st.spinner("Analizando datos..."):
             try:
-                # Leer GSC con manejo de errores
                 gsc_df = pd.read_csv(gsc_file, encoding='utf-8')
                 
-                # Leer GA4 detectando delimitador automáticamente
-                ga4_file.seek(0)  # Reset file pointer
+                ga4_file.seek(0)
                 sample = ga4_file.read(1024).decode('utf-8')
                 ga4_file.seek(0)
-                
-                # Detectar delimitador (coma, punto y coma, tab)
                 delimiter = ',' if sample.count(',') > sample.count(';') else ';'
-                
                 ga4_df = pd.read_csv(ga4_file, encoding='utf-8', delimiter=delimiter, on_bad_lines='skip')
                 
+                results = process_data(gsc_df, ga4_df)
+                
+                if results is None or len(results) == 0:
+                    st.error("❌ No se encontraron oportunidades en rango 5-20 con suficiente tráfico")
+                else:
+                    st.success(f"✅ {len(results)} oportunidades encontradas")
+                    
+                    top_url = results.iloc[0]
+                    
+                    st.markdown("---")
+                    st.subheader("🏆 TOP Oportunidad")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Score", f"{top_url['score']:.1f}/100")
+                    
+                    with col2:
+                        st.metric("Posición", 
+                                 f"{int(top_url['position_current'])}", 
+                                 f"{top_url['position_change']:+.1f}%")
+                    
+                    with col3:
+                        st.metric("Sessions", 
+                                 f"{int(top_url['sessions_current'])}", 
+                                 f"{top_url['sessions_change']:+.1f}%")
+                    
+                    with col4:
+                        st.metric("Bounce Rate", f"{top_url['bounce_rate']:.1f}%")
+                    
+                    st.markdown(f"**URL:** `{top_url['url_clean']}`")
+                    
+                    with st.spinner("Generando análisis con IA..."):
+                        metrics = {
+                            'position': int(top_url['position_current']),
+                            'position_change': f"{top_url['position_change']:+.1f}%",
+                            'sessions': int(top_url['sessions_current']),
+                            'sessions_change': top_url['sessions_change'],
+                            'bounce_rate': top_url['bounce_rate'],
+                            'avg_duration': top_url['avg_duration']
+                        }
+                        insight = get_groq_insight(top_url['url_clean'], metrics)
+                    
+                    st.info(f"💡 **Insight IA:** {insight}")
+                    
+                    st.markdown("---")
+                    st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs prioritarias** con la versión Pro")
+                    
             except Exception as e:
-                st.error(f"❌ Error leyendo archivos: {str(e)}")
-                st.info("Asegúrate de exportar los CSVs en formato UTF-8 desde Google")
-                st.stop()
-            else:
-                st.success(f"✅ {len(results)} oportunidades encontradas")
+                st.error(f"❌ Error: {str(e)}")
                 
-                # TOP 1 URL
-                top_url = results.iloc[0]
-                
-                st.markdown("---")
-                st.subheader("🏆 TOP Oportunidad")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Score", f"{top_url['score']:.1f}/100")
-                
-                with col2:
-                    st.metric("Posición", 
-                             f"{int(top_url['position_current'])}", 
-                             f"{top_url['position_change']:+.1f}%")
-                
-                with col3:
-                    st.metric("Sessions", 
-                             f"{int(top_url['sessions_current'])}", 
-                             f"{top_url['sessions_change']:+.1f}%")
-                
-                with col4:
-                    st.metric("Bounce Rate", f"{top_url['bounce_rate']:.1f}%")
-                
-                # URL
-                st.markdown(f"**URL:** `{top_url['url_clean']}`")
-                
-                # Insight de Groq
-                with st.spinner("Generando análisis con IA..."):
-                    metrics = {
-                        'position': int(top_url['position_current']),
-                        'position_change': f"{top_url['position_change']:+.1f}%",
-                        'sessions': int(top_url['sessions_current']),
-                        'sessions_change': top_url['sessions_change'],
-                        'bounce_rate': top_url['bounce_rate'],
-                        'avg_duration': top_url['avg_duration']
-                    }
-                    insight = get_groq_insight(top_url['url_clean'], metrics)
-                
-                st.info(f"💡 **Insight IA:** {insight}")
-                
-                # Mensaje upgrade
-                st.markdown("---")
-                st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs prioritarias** con la versión Pro")
-
 else:
     st.info("👆 Sube ambos archivos CSV para comenzar")
     
