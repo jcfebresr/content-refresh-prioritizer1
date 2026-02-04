@@ -106,10 +106,21 @@ def clean_ga4_csv(raw_content):
     # Leer CSV con delimitador correcto
     df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
     
-    # Filtrar solo URLs válidas
-    df = df[df.iloc[:, 0].apply(is_url_row)]
+    # DEBUG: Mostrar primeras filas ANTES de filtrar
+    st.write("**DEBUG - GA4 antes de filtrar URLs:**")
+    st.write(f"Total filas: {len(df)}")
+    st.write("Primeras 10 celdas de columna 1:")
+    st.write(df.iloc[:10, 0].tolist())
     
-    return df
+    # Filtrar solo URLs válidas
+    df_filtered = df[df.iloc[:, 0].apply(is_url_row)]
+    
+    st.write(f"**DEBUG - Después de filtrar: {len(df_filtered)} filas**")
+    if len(df_filtered) > 0:
+        st.write("Primeras 3 URLs:")
+        st.write(df_filtered.iloc[:3, 0].tolist())
+    
+    return df_filtered
 
 def process_data(gsc_df, ga4_df, show_debug=False):
     
