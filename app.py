@@ -78,19 +78,28 @@ def is_url_row(first_cell):
     return False
 
 def clean_ga4_csv(raw_content):
-    """Limpia CSV de GA4 con formato complejo"""
+    """Limpia CSV de GA4 con doble header"""
     
-    # Remover líneas con # al inicio
-    lines = [line for line in raw_content.split('\n') if not line.startswith('#')]
+    lines = raw_content.split('\n')
     
-    # Detectar delimitador
-    delimiter = ','
+    # Encontrar la línea que contiene "Landing page + query string"
+    header_line_idx = None
+    for i, line in enumerate(lines):
+        if 'landing page' in line.lower():
+            header_line_idx = i
+            break
     
-    # Leer CSV con pandas
-    df = pd.read_csv(StringIO('\n'.join(lines)), delimiter=delimiter, on_bad_lines='skip')
+    if header_line_idx is None:
+        raise ValueError("No encuentro header 'Landing page + query string'")
     
-    # La primera columna debe ser "Landing page + query string" o similar
-    # Filtrar solo filas que sean URLs válidas
+    # Tomar desde esa línea en adelante
+    clean_lines = lines[header_line_idx:]
+    clean_csv = '\n'.join(clean_lines)
+    
+    # Leer CSV
+    df = pd.read_csv(StringIO(clean_csv), on_bad_lines='skip')
+    
+    # Filtrar solo URLs válidas
     df = df[df.iloc[:, 0].apply(is_url_row)]
     
     return df
