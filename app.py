@@ -82,6 +82,9 @@ def clean_ga4_csv(raw_content):
     
     lines = raw_content.split('\n')
     
+    # Remover líneas que empiezan con #
+    lines = [line for line in lines if not line.startswith('#')]
+    
     # Encontrar la línea que contiene "Landing page + query string"
     header_line_idx = None
     for i, line in enumerate(lines):
@@ -96,8 +99,12 @@ def clean_ga4_csv(raw_content):
     clean_lines = lines[header_line_idx:]
     clean_csv = '\n'.join(clean_lines)
     
-    # Leer CSV
-    df = pd.read_csv(StringIO(clean_csv), on_bad_lines='skip')
+    # Detectar delimitador
+    first_line = clean_lines[0]
+    delimiter = ',' if first_line.count(',') > first_line.count(';') else ';'
+    
+    # Leer CSV con delimitador correcto
+    df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
     
     # Filtrar solo URLs válidas
     df = df[df.iloc[:, 0].apply(is_url_row)]
