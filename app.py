@@ -3,6 +3,97 @@ import pandas as pd
 import numpy as np
 from groq import Groq
 
+import requests
+from bs4 import BeautifulSoup
+import json
+
+def scrape_url_metadata(url):
+    """Extrae metadata SEO de una URL"""
+    
+    try:
+        # Asegurar que tiene protocolo
+        if not url.startswith('http'):
+            url = 'https://' + url
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Title
+        title = soup.find('title')
+        title_text = title.get_text().strip() if title else ""
+        
+        # Meta description
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        description = meta_desc.get('content', '').strip() if meta_desc else ""
+        
+        # Headings
+        h1_tags = [h.get_text().strip() for h in soup.find_all('h1')]
+        h2_tags = [h.get_text().strip() for h in soup.find_all('h2')]
+        h3_tags = [h.get_text().strip() for h in soup.find_all('h3')]
+        
+        # Schema markup (JSON-LD)
+        schemas = []
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                schema_data = json.loads(script.string)
+                schema_type = schema_data.get('@type', 'Unknown')
+                schemas.append(schema_type)
+            except:
+                pass
+        
+        # FAQs (si hay schema FAQPage)
+        faqs = []
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                schema_data = json.loads(script.string)
+                if schema_data.get('@type') == 'FAQPage':
+                    for entity in schema_data.get('mainEntity', []):
+                        question = entity.get('name', '')
+                        answer = entity.get('acceptedAnswer', {}).get('text', '')
+                        faqs.append({'question': question, 'answer': answer})
+            except:
+                pass
+        
+        # Word count (texto visible)
+        text = soup.get_text()
+        words = len(text.split())
+        
+        # Images con/sin alt
+        images = soup.find_all('img')
+        images_total = len(images)
+        images_without_alt = len([img for img in images if not img.get('alt')])
+        
+        return {
+            'success': True,
+            'title': title_text,
+            'title_length': len(title_text),
+            'description': description,
+            'description_length': len(description),
+            'h1_count': len(h1_tags),
+            'h1_tags': h1_tags,
+            'h2_count': len(h2_tags),
+            'h2_tags': h2_tags[:5],  # Solo primeros 5
+            'h3_count': len(h3_tags),
+            'word_count': words,
+            'images_total': images_total,
+            'images_without_alt': images_without_alt,
+            'schemas': schemas,
+            'faqs_count': len(faqs),
+            'faqs': faqs[:3]  # Solo primeros 3
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
 st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", layout="wide")
 
 def get_groq_insight(url, metrics):
