@@ -78,12 +78,11 @@ def is_url_row(first_cell):
     return False
 
 def clean_ga4_csv(raw_content):
-    """Limpia CSV de GA4 con doble header"""
+    """Limpia CSV de GA4 con formato pivotado"""
     
     lines = raw_content.split('\n')
     lines = [line for line in lines if not line.startswith('#') and line.strip()]
     
-    # Encontrar la línea "Landing page + query string"
     header_line_idx = None
     for i, line in enumerate(lines):
         if 'landing page' in line.lower():
@@ -93,69 +92,55 @@ def clean_ga4_csv(raw_content):
     if header_line_idx is None:
         raise ValueError("No encuentro header")
     
-    # Los headers reales están en header_line_idx
-    # Los datos empiezan en header_line_idx + 1
     header_line = lines[header_line_idx]
     data_lines = lines[header_line_idx + 1:]
-    
-    # Reconstruir CSV con header + datos
     clean_lines = [header_line] + data_lines
     clean_csv = '\n'.join(clean_lines)
     
-    delimiter = ','
-    
-    # Leer CSV
-    df = pd.read_csv(StringIO(clean_csv), delimiter=delimiter, on_bad_lines='skip')
+    df = pd.read_csv(StringIO(clean_csv), delimiter=',', on_bad_lines='skip')
     
     st.write(f"**DEBUG - Total filas: {len(df)}**")
-    st.write(f"**DEBUG - Columnas: {df.columns.tolist()}**")
-    st.write("**DEBUG - Primeras 10 filas col 0:**")
-    st.write(df.iloc[:10, 0].tolist())
-    st.write("**DEBUG - Primeras 10 filas col 1:**")
-    st.write(df.iloc[:10, 1].tolist())
     
-    # Procesar formato pivotado
-    # Cada URL tiene 3 filas: URL + "% change", fecha actual con datos, fecha anterior con datos
+    # Buscar filas donde columna 0 NO está vacía
+    # Esas filas tienen las URLs
     url_rows = []
     
-    i = 0
-    while i < len(df):
+    for i in range(len(df)):
         first_col = str(df.iloc[i, 0]).strip()
-        second_col = str(df.iloc[i, 1]).strip() if len(df.columns) > 1 else ""
         
-        # Buscar fila que tiene URL en col 0 y "% change" en col 1
+        # Si col 0 NO está vacía y NO es "nan" y tiene contenido
         if (first_col and 
-            first_col not in ['', 'nan', 'NaN'] and 
-            not first_col.startswith(('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')) and
-            '% change' in second_col.lower()):
+            first_col not in ['', 'nan', 'NaN'] and
+            not first_col.lower().startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', '%'))):
             
-            # Verificar que hay 2 filas más
+            # Esta fila tiene la URL
+            url = first_col
+            
+            # Verificar que hay 2 filas más para datos
             if i + 2 < len(df):
-                url = first_col
+                # Fila i+1: datos período actual (Jan 5 - Feb 3, 2026)
+                # Fila i+2: datos período anterior (Dec 8, 2025 - Jan 6, 2026)
                 
-                # Fila i+1: datos actuales
-                # Fila i+2: datos anteriores
-                # Sessions está en columna "Sessions" (índice 3)
+                # Sessions está en columna index 3
+                # Bounce rate está en columna index 5
+                
+                sessions_current = df.iloc[i+1, 3]
+                sessions_previous = df.iloc[i+2, 3]
+                bounce_current = df.iloc[i+1, 5]
                 
                 url_rows.append({
                     'url': url,
-                    'sessions_current': df.iloc[i+1, 3] if len(df.columns) > 3 else 0,
-                    'sessions_previous': df.iloc[i+2, 3] if len(df.columns) > 3 else 0,
-                    'bounce_current': df.iloc[i+1, 5] if len(df.columns) > 5 else 0,
-                    'bounce_previous': df.iloc[i+2, 5] if len(df.columns) > 5 else 0
+                    'sessions_current': sessions_current,
+                    'sessions_previous': sessions_previous,
+                    'bounce_rate': bounce_current
                 })
-                
-                i += 3
-                continue
-        
-        i += 1
     
     new_df = pd.DataFrame(url_rows)
     
     st.write(f"**DEBUG - URLs extraídas: {len(new_df)}**")
     if len(new_df) > 0:
-        st.write("**Primeras 3 URLs:**")
-        st.dataframe(new_df.head(3))
+        st.write("**Primeras 5 URLs:**")
+        st.dataframe(new_df.head(5))
     
     return new_df
 
