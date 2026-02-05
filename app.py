@@ -240,74 +240,98 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     return recommendations
 
 def get_google_top_10(keyword, debug=False):
+    """Scrape top 10 con intentos mejorados"""
+    
+    # Intentar con DuckDuckGo primero (más permisivo)
     try:
         if debug:
-            st.write("**🔍 Método 1: Google Search**")
+            st.write("**🦆 Intentando DuckDuckGo**")
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9',
-            'Referer': 'https://www.google.com/',
-            'DNT': '1'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
-        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=20&hl=es"
+        url = f"https://html.duckduckgo.com/html/?q={keyword.replace(' ', '+')}"
         
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
-        
         results = []
         
-        selectors = [
-            ('div', {'class': 'g'}),
-            ('div', {'class': 'yuRUbf'}),
-            ('div', {'data-sokoban-container': True}),
-            ('a', {'jsname': 'UWckNb'})
-        ]
+        for result in soup.find_all('a', class_='result__url'):
+            href = result.get('href', '')
+            if href.startswith('http') and href not in results:
+                results.append(href)
+                if len(results) >= 10:
+                    break
         
-        for tag, attrs in selectors:
-            elements = soup.find_all(tag, attrs)
+        if len(results) >= 5:
+            if debug:
+                st.success(f"✅ DuckDuckGo: {len(results)} URLs")
+            return results[:10]
             
-            for elem in elements:
-                link = elem.find('a', href=True) if tag == 'div' else elem
+    except Exception as e:
+        if debug:
+            st.error(f"DuckDuckGo falló: {str(e)}")
+    
+    # Intentar Google
+    try:
+        if debug:
+            st.write("**🔍 Intentando Google**")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en-US,en;q=0.8',
+            'Referer': 'https://www.google.com/',
+            'DNT': '1'
+        }
+        
+        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=20"
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        results = []
+        
+        # Probar múltiples selectores
+        for selector in [
+            soup.find_all('div', class_='g'),
+            soup.find_all('div', class_='yuRUbf'),
+            soup.find_all('a', jsname='UWckNb')
+        ]:
+            for elem in selector:
+                link = elem.find('a', href=True) if elem.name == 'div' else elem
                 if link:
                     href = link.get('href', '')
-                    if href.startswith('/url?q='):
+                    
+                    # Limpiar /url?q=
+                    if '/url?q=' in href:
                         href = href.split('/url?q=')[1].split('&')[0]
                     
+                    # Validar
                     if (href.startswith('http') and 
                         'google.com' not in href and 
                         'youtube.com' not in href and
-                        'gstatic.com' not in href):
-                        
-                        if href not in results:
-                            results.append(href)
+                        href not in results):
+                        results.append(href)
             
             if len(results) >= 10:
                 break
         
-        if len(results) >= 3:
+        if len(results) >= 5:
+            if debug:
+                st.success(f"✅ Google: {len(results)} URLs")
             return results[:10]
             
-    except:
-        pass
+    except Exception as e:
+        if debug:
+            st.error(f"Google falló: {str(e)}")
     
-    # Fallback
-    return [
-        "https://www.mayoclinic.org/",
-        "https://medlineplus.gov/spanish/",
-        "https://www.cdc.gov/spanish/",
-        "https://www.who.int/es",
-        "https://www.healthline.com/",
-        "https://www.webmd.com/",
-        "https://www.nih.gov/",
-        "https://www.health.harvard.edu/",
-        "https://www.nhs.uk/",
-        "https://www.clevelandclinic.org/"
-    ][:10]
+    # Si todo falla, retornar lista vacía (NO fallback falso)
+    return []
 
 def process_gsc_data(df):
     df = df[~df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
@@ -562,92 +586,148 @@ if gsc_file:
                 st.markdown("---")
                 st.subheader("📊 Comparativa vs Top 10 de Google")
                 
-                keyword_input = st.text_input(
-                    "Ingresa la keyword principal de esta URL:",
-                    placeholder="Ej: tipos de colirios con y sin receta"
-                )
+                # Tabs para método automático o manual
+                tab1, tab2 = st.tabs(["🤖 Scraping Automático", "✍️ Input Manual"])
                 
-                if keyword_input:
-                    if st.button("🔍 Comparar con Top 10", type="primary"):
-                        with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
-                            top_10_urls = get_google_top_10(keyword_input)
-                        
-                        if top_10_urls:
-                            with st.expander("🔗 URLs del Top 10 analizadas"):
-                                for idx, url in enumerate(top_10_urls, 1):
-                                    st.write(f"{idx}. {url}")
+                with tab1:
+                    st.markdown("**Intenta obtener automáticamente las URLs del top 10 de Google**")
+                    
+                    keyword_input = st.text_input(
+                        "Ingresa la keyword principal de esta URL:",
+                        placeholder="Ej: how to build app with bubble",
+                        key="keyword_auto"
+                    )
+                    
+                    if keyword_input:
+                        if st.button("🔍 Obtener Top 10 automáticamente", type="primary"):
+                            with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
+                                top_10_urls = get_google_top_10(keyword_input, debug=False)
                             
-                            st.info(f"Analizando {len(top_10_urls)} URLs del top 10...")
-                            
-                            comparison_data = []
-                            competitors_metadata = []
-                            
-                            comparison_data.append({
-                                'Posición': f"#{int(selected['position_current'])} (TU URL)",
-                                'Title Length': metadata['title_length'],
-                                'Desc Length': metadata['description_length'],
-                                'Word Count': metadata['word_count'],
-                                'H1': metadata['h1_count'],
-                                'H2': metadata['h2_count'],
-                                'H3': metadata['h3_count'],
-                                'Schemas': metadata['schemas_count'],
-                                'FAQs': metadata['faqs_count']
-                            })
-                            
-                            progress_bar = st.progress(0)
-                            for idx, url in enumerate(top_10_urls[:10], 1):
-                                with st.spinner(f"Analizando posición #{idx}..."):
-                                    comp_metadata = scrape_url_metadata(url)
-                                    competitors_metadata.append(comp_metadata)
-                                    time.sleep(2)
-                                    
-                                    comparison_data.append({
-                                        'Posición': f"#{idx}",
-                                        'Title Length': comp_metadata['title_length'],
-                                        'Desc Length': comp_metadata['description_length'],
-                                        'Word Count': comp_metadata['word_count'],
-                                        'H1': comp_metadata['h1_count'],
-                                        'H2': comp_metadata['h2_count'],
-                                        'H3': comp_metadata['h3_count'],
-                                        'Schemas': comp_metadata['schemas_count'],
-                                        'FAQs': comp_metadata['faqs_count']
-                                    })
-                                    
-                                    progress_bar.progress(idx / 10)
-                            
-                            progress_bar.empty()
-                            
-                            comparison_df = pd.DataFrame(comparison_data)
-                            
-                            avg_row = {
-                                'Posición': '📊 PROMEDIO TOP 10',
-                                'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
-                                'Desc Length': int(comparison_df.iloc[1:]['Desc Length'].mean()),
-                                'Word Count': int(comparison_df.iloc[1:]['Word Count'].mean()),
-                                'H1': round(comparison_df.iloc[1:]['H1'].mean(), 1),
-                                'H2': round(comparison_df.iloc[1:]['H2'].mean(), 1),
-                                'H3': round(comparison_df.iloc[1:]['H3'].mean(), 1),
-                                'Schemas': round(comparison_df.iloc[1:]['Schemas'].mean(), 1),
-                                'FAQs': round(comparison_df.iloc[1:]['FAQs'].mean(), 1)
-                            }
-                            
-                            comparison_df = pd.concat([comparison_df, pd.DataFrame([avg_row])], ignore_index=True)
-                            
-                            st.dataframe(comparison_df, use_container_width=True)
-                            
-                            # Recomendaciones de headings con IA
-                            st.markdown("---")
-                            st.subheader("📑 Recomendaciones de Headings para Optimizar")
-                            
-                            with st.spinner("Generando recomendaciones de estructura con IA..."):
-                                competitors_h2_sample = []
-                                for meta in competitors_metadata[:5]:
-                                    if meta['success'] and meta.get('h2_tags'):
-                                        competitors_h2_sample.extend(meta['h2_tags'][:3])
+                            if top_10_urls and len(top_10_urls) >= 5:
+                                st.session_state['top_10_urls'] = top_10_urls
+                                st.session_state['keyword'] = keyword_input
+                                st.success(f"✅ Se obtuvieron {len(top_10_urls)} URLs")
                                 
-                                heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
+                                with st.expander("🔗 URLs obtenidas"):
+                                    for idx, url in enumerate(top_10_urls, 1):
+                                        st.write(f"{idx}. {url}")
+                                
+                                if st.button("▶️ Analizar estas URLs", type="primary", key="analyze_auto"):
+                                    st.session_state['start_analysis'] = True
+                                    st.rerun()
+                            else:
+                                st.error("❌ No se pudo obtener el top 10 automáticamente")
+                                st.warning("💡 Google está bloqueando el scraping. Usa el método **Input Manual** en la pestaña de al lado.")
+                
+                with tab2:
+                    st.markdown("**Pega manualmente las URLs del top 10 de Google**")
+                    st.info("💡 Abre Google en modo incógnito, busca tu keyword, y copia las URLs de los primeros 10 resultados")
+                    
+                    keyword_manual = st.text_input(
+                        "Keyword:",
+                        placeholder="Ej: how to build app with bubble",
+                        key="keyword_manual"
+                    )
+                    
+                    urls_manual = st.text_area(
+                        "Pega las URLs del top 10 (una por línea):",
+                        placeholder="https://example.com/page1\nhttps://example.com/page2\n...",
+                        height=200,
+                        key="urls_manual"
+                    )
+                    
+                    if keyword_manual and urls_manual:
+                        if st.button("▶️ Analizar estas URLs", type="primary", key="analyze_manual"):
+                            # Procesar URLs
+                            urls = [url.strip() for url in urls_manual.split('\n') if url.strip() and url.startswith('http')]
+                            
+                            if len(urls) >= 3:
+                                st.session_state['top_10_urls'] = urls[:10]
+                                st.session_state['keyword'] = keyword_manual
+                                st.session_state['start_analysis'] = True
+                                st.success(f"✅ {len(urls[:10])} URLs listas para analizar")
+                                st.rerun()
+                            else:
+                                st.error("❌ Necesitas al menos 3 URLs válidas")
+                
+                # Ejecutar análisis si está activado
+                if st.session_state.get('start_analysis'):
+                    top_10_urls = st.session_state.get('top_10_urls', [])
+                    keyword = st.session_state.get('keyword', '')
+                    
+                    if top_10_urls and keyword:
+                        st.markdown("---")
+                        st.info(f"Analizando {len(top_10_urls)} URLs para la keyword: **{keyword}**")
+                        
+                        comparison_data = []
+                        competitors_metadata = []
+                        
+                        comparison_data.append({
+                            'Posición': f"#{int(selected['position_current'])} (TU URL)",
+                            'Title Length': metadata['title_length'],
+                            'Desc Length': metadata['description_length'],
+                            'Word Count': metadata['word_count'],
+                            'H1': metadata['h1_count'],
+                            'H2': metadata['h2_count'],
+                            'H3': metadata['h3_count'],
+                            'Schemas': metadata['schemas_count'],
+                            'FAQs': metadata['faqs_count']
+                        })
+                        
+                        progress_bar = st.progress(0)
+                        for idx, url in enumerate(top_10_urls[:10], 1):
+                            with st.spinner(f"Analizando posición #{idx}: {url[:50]}..."):
+                                comp_metadata = scrape_url_metadata(url)
+                                competitors_metadata.append(comp_metadata)
+                                time.sleep(2)
+                                
+                                comparison_data.append({
+                                    'Posición': f"#{idx}",
+                                    'Title Length': comp_metadata['title_length'],
+                                    'Desc Length': comp_metadata['description_length'],
+                                    'Word Count': comp_metadata['word_count'],
+                                    'H1': comp_metadata['h1_count'],
+                                    'H2': comp_metadata['h2_count'],
+                                    'H3': comp_metadata['h3_count'],
+                                    'Schemas': comp_metadata['schemas_count'],
+                                    'FAQs': comp_metadata['faqs_count']
+                                })
+                                
+                                progress_bar.progress(idx / len(top_10_urls[:10]))
+                        
+                        progress_bar.empty()
+                        
+                        comparison_df = pd.DataFrame(comparison_data)
+                        
+                        avg_row = {
+                            'Posición': '📊 PROMEDIO TOP 10',
+                            'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
+                            'Desc Length': int(comparison_df.iloc[1:]['Desc Length'].mean()),
+                            'Word Count': int(comparison_df.iloc[1:]['Word Count'].mean()),
+                            'H1': round(comparison_df.iloc[1:]['H1'].mean(), 1),
+                            'H2': round(comparison_df.iloc[1:]['H2'].mean(), 1),
+                            'H3': round(comparison_df.iloc[1:]['H3'].mean(), 1),
+                            'Schemas': round(comparison_df.iloc[1:]['Schemas'].mean(), 1),
+                            'FAQs': round(comparison_df.iloc[1:]['FAQs'].mean(), 1)
+                        }
+                        
+                        comparison_df = pd.concat([comparison_df, pd.DataFrame([avg_row])], ignore_index=True)
+                        
+                        st.dataframe(comparison_df, use_container_width=True)
+                        
+                        # Recomendaciones de headings con IA
+                        st.markdown("---")
+                        st.subheader("📑 Recomendaciones de Headings para Optimizar")
+                        
+                        with st.spinner("Generando recomendaciones de estructura con IA..."):
+                            competitors_h2_sample = []
+                            for meta in competitors_metadata[:5]:
+                                if meta['success'] and meta.get('h2_tags'):
+                                    competitors_h2_sample.extend(meta['h2_tags'][:3])
+                            
+                            heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
 
-**Keyword objetivo:** {keyword_input}
+**Keyword objetivo:** {keyword}
 
 **Headings actuales:**
 - H1: {', '.join(metadata['h1_tags'][:2]) if metadata['h1_tags'] else 'Ninguno'}
@@ -682,21 +762,29 @@ Formato:
 - [H3 ejemplo 2]
 - [H3 ejemplo 3]"""
 
-                                try:
-                                    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-                                    
-                                    chat_completion = client.chat.completions.create(
-                                        messages=[{"role": "user", "content": heading_prompt}],
-                                        model="llama-3.3-70b-versatile",
-                                        temperature=0.4,
-                                        max_tokens=800
-                                    )
-                                    
-                                    heading_recommendations = chat_completion.choices[0].message.content
-                                    st.markdown(heading_recommendations)
-                                    
-                                except Exception as e:
-                                    st.error(f"Error generando recomendaciones: {str(e)}")
+                            try:
+                                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                                
+                                chat_completion = client.chat.completions.create(
+                                    messages=[{"role": "user", "content": heading_prompt}],
+                                    model="llama-3.3-70b-versatile",
+                                    temperature=0.4,
+                                    max_tokens=800
+                                )
+                                
+                                heading_recommendations = chat_completion.choices[0].message.content
+                                st.markdown(heading_recommendations)
+                                
+                            except Exception as e:
+                                st.error(f"Error generando recomendaciones: {str(e)}")
+                        
+                        # Limpiar session state
+                        st.session_state['start_analysis'] = False
+                        
+                        if st.button("🔄 Nueva comparativa"):
+                            st.session_state['top_10_urls'] = None
+                            st.session_state['keyword'] = None
+                            st.rerun()
             else:
                 st.warning("⚠️ No se pudo analizar la página")
             
