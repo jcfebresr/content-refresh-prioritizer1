@@ -13,6 +13,45 @@ st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", l
 # Selector de idioma
 language = st.sidebar.selectbox("🌐 Language / Idioma", ["Español", "English"])
 
+# Input para API Key
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔑 Groq API Key")
+
+if language == "Español":
+    st.sidebar.markdown("""
+    **Necesitas tu propia API Key de Groq (gratuita)**
+    
+    1. Ve a [console.groq.com](https://console.groq.com)
+    2. Crea una cuenta (gratis)
+    3. Genera tu API Key
+    4. Pégala aquí abajo 👇
+    """)
+    api_key_input = st.sidebar.text_input(
+        "Tu Groq API Key:",
+        type="password",
+        placeholder="gsk_...",
+        help="Tu API key es privada y no se guarda"
+    )
+else:
+    st.sidebar.markdown("""
+    **You need your own Groq API Key (free)**
+    
+    1. Go to [console.groq.com](https://console.groq.com)
+    2. Create an account (free)
+    3. Generate your API Key
+    4. Paste it here 👇
+    """)
+    api_key_input = st.sidebar.text_input(
+        "Your Groq API Key:",
+        type="password",
+        placeholder="gsk_...",
+        help="Your API key is private and not saved"
+    )
+
+# Guardar API key en session state
+if api_key_input:
+    st.session_state['groq_api_key'] = api_key_input
+
 # Textos según idioma
 if language == "Español":
     TEXTS = {
@@ -69,7 +108,9 @@ if language == "Español":
         'fell': 'Cayó',
         'rose': 'Subió',
         'pos': 'pos',
-        'no_change': 'Sin cambio'
+        'no_change': 'Sin cambio',
+        'api_key_required': '⚠️ Necesitas ingresar tu Groq API Key en el sidebar para usar las recomendaciones con IA',
+        'api_key_invalid': '❌ API Key inválida. Verifica que la copiaste correctamente desde console.groq.com'
     }
 else:
     TEXTS = {
@@ -126,12 +167,17 @@ else:
         'fell': 'Fell',
         'rose': 'Rose',
         'pos': 'pos',
-        'no_change': 'No change'
+        'no_change': 'No change',
+        'api_key_required': '⚠️ You need to enter your Groq API Key in the sidebar to use AI recommendations',
+        'api_key_invalid': '❌ Invalid API Key. Verify you copied it correctly from console.groq.com'
     }
 
-def get_groq_insight(url, metrics, metadata, lang):
+def get_groq_insight(url, metrics, metadata, lang, api_key):
+    if not api_key:
+        return TEXTS['api_key_required']
+    
     try:
-        client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+        client = Groq(api_key=api_key)
         
         if lang == "Español":
             prompt = f"""Eres un experto SEO. Analiza esta URL y genera 3 recomendaciones ESPECÍFICAS y ACCIONABLES en español:
@@ -188,7 +234,9 @@ Generate 3 concrete recommendations prioritized by impact. Each in 1 line, forma
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"Error generating insight: {str(e)}"
+        if "invalid" in str(e).lower() or "unauthorized" in str(e).lower():
+            return TEXTS['api_key_invalid']
+        return f"Error: {str(e)}"
 
 def clean_number(val):
     if pd.isna(val):
@@ -617,11 +665,9 @@ if gsc_file:
                 pos_change = int(selected['position_change'])
                 
                 if pos_change > 0:
-                    # Número subió = Empeoró
                     pos_color = "🔴"
                     pos_text = f"{TEXTS['fell']} {pos_change} {TEXTS['pos']}"
                 elif pos_change < 0:
-                    # Número bajó = Mejoró
                     pos_color = "🟢"
                     pos_text = f"{TEXTS['rose']} {abs(pos_change)} {TEXTS['pos']}"
                 else:
@@ -678,18 +724,24 @@ if gsc_file:
                 st.markdown("---")
                 st.subheader(TEXTS['ai_recommendations'])
                 
-                with st.spinner(TEXTS['generating']):
-                    metrics = {
-                        'position': int(selected['position_current']),
-                        'position_change': f"{int(selected['position_change']):+d}",
-                        'clicks': int(selected['clicks_current']),
-                        'clicks_change': selected['clicks_change'],
-                        'impressions': int(selected['impressions_current']),
-                        'ctr': selected['ctr_current']
-                    }
-                    insight = get_groq_insight(selected['url'], metrics, metadata, language)
+                # Verificar API key
+                user_api_key = st.session_state.get('groq_api_key', '')
                 
-                st.info(insight)
+                if not user_api_key:
+                    st.warning(TEXTS['api_key_required'])
+                else:
+                    with st.spinner(TEXTS['generating']):
+                        metrics = {
+                            'position': int(selected['position_current']),
+                            'position_change': f"{int(selected['position_change']):+d}",
+                            'clicks': int(selected['clicks_current']),
+                            'clicks_change': selected['clicks_change'],
+                            'impressions': int(selected['impressions_current']),
+                            'ctr': selected['ctr_current']
+                        }
+                        insight = get_groq_insight(selected['url'], metrics, metadata, language, user_api_key)
+                    
+                    st.info(insight)
                 
                 st.markdown("---")
                 st.subheader(TEXTS['internal_links'])
@@ -836,28 +888,29 @@ if gsc_file:
                         st.markdown("---")
                         st.subheader(TEXTS['heading_recommendations'])
                         
-                        with st.spinner(TEXTS['generating_headings']):
-                            # Recopilar todos los H2 de competidores
-                            all_competitor_h2 = []
-                            for meta in competitors_metadata:
-                                if meta['success'] and meta.get('h2_tags'):
-                                    all_competitor_h2.extend(meta['h2_tags'])
-                            
-                            # H2 actuales de la URL
-                            current_h2 = set([h.lower() for h in metadata['h2_tags']])
-                            
-                            # Encontrar H2 que tienen competidores pero tú NO
-                            missing_h2_candidates = []
-                            for h2 in all_competitor_h2:
-                                h2_lower = h2.lower()
-                                # Si no existe en tus H2 actuales
-                                if h2_lower not in current_h2:
-                                    # Y no está repetido en los candidatos
-                                    if h2 not in missing_h2_candidates:
-                                        missing_h2_candidates.append(h2)
-                            
-                            if language == "Español":
-                                heading_prompt = f"""Eres un experto SEO. Analiza los headings FALTANTES en esta página comparando con la competencia.
+                        # Verificar API key
+                        user_api_key = st.session_state.get('groq_api_key', '')
+                        
+                        if not user_api_key:
+                            st.warning(TEXTS['api_key_required'])
+                        else:
+                            with st.spinner(TEXTS['generating_headings']):
+                                all_competitor_h2 = []
+                                for meta in competitors_metadata:
+                                    if meta['success'] and meta.get('h2_tags'):
+                                        all_competitor_h2.extend(meta['h2_tags'])
+                                
+                                current_h2 = set([h.lower() for h in metadata['h2_tags']])
+                                
+                                missing_h2_candidates = []
+                                for h2 in all_competitor_h2:
+                                    h2_lower = h2.lower()
+                                    if h2_lower not in current_h2:
+                                        if h2 not in missing_h2_candidates:
+                                            missing_h2_candidates.append(h2)
+                                
+                                if language == "Español":
+                                    heading_prompt = f"""Eres un experto SEO. Analiza los headings FALTANTES en esta página comparando con la competencia.
 
 **Keyword objetivo:** {keyword}
 
@@ -883,8 +936,8 @@ Genera:
 
 **Justificación:**
 Explica brevemente por qué estos H2 son importantes para cubrir la intención de búsqueda."""
-                            else:
-                                heading_prompt = f"""You are an SEO expert. Analyze the MISSING headings on this page compared to competitors.
+                                else:
+                                    heading_prompt = f"""You are an SEO expert. Analyze the MISSING headings on this page compared to competitors.
 
 **Target keyword:** {keyword}
 
@@ -911,21 +964,24 @@ Generate:
 **Justification:**
 Briefly explain why these H2s are important to cover search intent."""
 
-                            try:
-                                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-                                
-                                chat_completion = client.chat.completions.create(
-                                    messages=[{"role": "user", "content": heading_prompt}],
-                                    model="llama-3.3-70b-versatile",
-                                    temperature=0.4,
-                                    max_tokens=800
-                                )
-                                
-                                heading_recommendations = chat_completion.choices[0].message.content
-                                st.markdown(heading_recommendations)
-                                
-                            except Exception as e:
-                                st.error(f"Error: {str(e)}")
+                                try:
+                                    client = Groq(api_key=user_api_key)
+                                    
+                                    chat_completion = client.chat.completions.create(
+                                        messages=[{"role": "user", "content": heading_prompt}],
+                                        model="llama-3.3-70b-versatile",
+                                        temperature=0.4,
+                                        max_tokens=800
+                                    )
+                                    
+                                    heading_recommendations = chat_completion.choices[0].message.content
+                                    st.markdown(heading_recommendations)
+                                    
+                                except Exception as e:
+                                    if "invalid" in str(e).lower() or "unauthorized" in str(e).lower():
+                                        st.error(TEXTS['api_key_invalid'])
+                                    else:
+                                        st.error(f"Error: {str(e)}")
                         
                         st.session_state['start_analysis'] = False
                         
