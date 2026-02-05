@@ -59,7 +59,6 @@ def clean_number(val):
         return 0
 
 def extract_domain(url):
-    """Extrae el dominio de una URL"""
     if not url.startswith('http'):
         url = 'https://' + url
     
@@ -69,8 +68,6 @@ def extract_domain(url):
     return None
 
 def scrape_url_metadata(url, target_domain=None):
-    """Extrae metadata SEO de una URL con error handling robusto"""
-    
     try:
         if not url.startswith('http'):
             url = 'https://' + url
@@ -93,15 +90,12 @@ def scrape_url_metadata(url, target_domain=None):
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Title
         title = soup.find('title')
         title_text = title.get_text().strip() if title else ""
         
-        # Meta description
         meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
         description = meta_desc.get('content', '').strip() if meta_desc else ""
         
-        # Headings
         h1_tags = []
         h2_tags = []
         h3_tags = []
@@ -113,7 +107,6 @@ def scrape_url_metadata(url, target_domain=None):
         except:
             pass
         
-        # Schema markup
         schemas = []
         try:
             for script in soup.find_all('script', type='application/ld+json'):
@@ -129,7 +122,6 @@ def scrape_url_metadata(url, target_domain=None):
         except:
             pass
         
-        # FAQs
         faqs = []
         try:
             for script in soup.find_all('script', type='application/ld+json'):
@@ -145,7 +137,6 @@ def scrape_url_metadata(url, target_domain=None):
         except:
             pass
         
-        # Word count
         words = 0
         try:
             for script in soup(['script', 'style', 'nav', 'footer', 'header']):
@@ -155,7 +146,6 @@ def scrape_url_metadata(url, target_domain=None):
         except:
             pass
         
-        # Images
         images_total = 0
         images_without_alt = 0
         try:
@@ -165,7 +155,6 @@ def scrape_url_metadata(url, target_domain=None):
         except:
             pass
         
-        # Enlaces internos SOLO DEL CONTENIDO
         internal_links = 0
         if target_domain:
             try:
@@ -221,33 +210,9 @@ def scrape_url_metadata(url, target_domain=None):
             'internal_links': internal_links
         }
         
-    except requests.exceptions.Timeout:
+    except:
         return {
-            'success': False,
-            'url': url,
-            'error': 'Timeout (>10s)',
-            'title': '', 'title_length': 0, 'description': '', 'description_length': 0,
-            'h1_count': 0, 'h1_tags': [], 'h2_count': 0, 'h2_tags': [],
-            'h3_count': 0, 'h3_tags': [], 'word_count': 0,
-            'images_total': 0, 'images_without_alt': 0,
-            'schemas_count': 0, 'faqs_count': 0, 'internal_links': 0
-        }
-    except requests.exceptions.RequestException as e:
-        return {
-            'success': False,
-            'url': url,
-            'error': f'Error de red: {str(e)[:50]}',
-            'title': '', 'title_length': 0, 'description': '', 'description_length': 0,
-            'h1_count': 0, 'h1_tags': [], 'h2_count': 0, 'h2_tags': [],
-            'h3_count': 0, 'h3_tags': [], 'word_count': 0,
-            'images_total': 0, 'images_without_alt': 0,
-            'schemas_count': 0, 'faqs_count': 0, 'internal_links': 0
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'url': url,
-            'error': str(e)[:100],
+            'success': False, 'url': url, 'error': 'Error',
             'title': '', 'title_length': 0, 'description': '', 'description_length': 0,
             'h1_count': 0, 'h1_tags': [], 'h2_count': 0, 'h2_tags': [],
             'h3_count': 0, 'h3_tags': [], 'word_count': 0,
@@ -256,8 +221,6 @@ def scrape_url_metadata(url, target_domain=None):
         }
 
 def recommend_internal_links(current_url, all_results_df, n=3):
-    """Recomienda enlaces internos basados en otras URLs del GSC"""
-    
     other_urls = all_results_df[all_results_df['url'] != current_url].copy()
     
     if len(other_urls) == 0:
@@ -277,9 +240,6 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     return recommendations
 
 def get_google_top_10(keyword, debug=False):
-    """Scrape top 10 con múltiples métodos de fallback"""
-    
-    # MÉTODO 1: Google con headers mejorados
     try:
         if debug:
             st.write("**🔍 Método 1: Google Search**")
@@ -294,17 +254,8 @@ def get_google_top_10(keyword, debug=False):
         
         url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=20&hl=es"
         
-        if debug:
-            st.write(f"URL: {url}")
-        
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        
-        if debug:
-            st.write(f"Status: {response.status_code}")
-            st.write(f"Encoding: {response.encoding}")
-            st.write("Primeros 500 caracteres:")
-            st.code(response.text[:500])
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
@@ -319,8 +270,6 @@ def get_google_top_10(keyword, debug=False):
         
         for tag, attrs in selectors:
             elements = soup.find_all(tag, attrs)
-            if debug:
-                st.write(f"Selector {tag} {attrs}: {len(elements)} encontrados")
             
             for elem in elements:
                 link = elem.find('a', href=True) if tag == 'div' else elem
@@ -336,70 +285,18 @@ def get_google_top_10(keyword, debug=False):
                         
                         if href not in results:
                             results.append(href)
-                            if debug:
-                                st.write(f"✅ Encontrada: {href[:80]}")
             
             if len(results) >= 10:
                 break
         
         if len(results) >= 3:
-            if debug:
-                st.success(f"✅ Google: {len(results)} URLs")
             return results[:10]
-        
-        if debug:
-            st.warning(f"Google solo devolvió {len(results)} URLs, probando método 2...")
             
-    except Exception as e:
-        if debug:
-            st.error(f"Error en Método 1: {str(e)}")
+    except:
+        pass
     
-    # MÉTODO 2: DuckDuckGo
-    try:
-        if debug:
-            st.write("**🦆 Método 2: DuckDuckGo**")
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
-        url = f"https://html.duckduckgo.com/html/?q={keyword.replace(' ', '+')}"
-        
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        results = []
-        
-        for result in soup.find_all('a', class_='result__url'):
-            href = result.get('href', '')
-            if href.startswith('http'):
-                if href not in results:
-                    results.append(href)
-                    if debug:
-                        st.write(f"✅ Encontrada: {href[:80]}")
-                if len(results) >= 10:
-                    break
-        
-        if len(results) >= 3:
-            if debug:
-                st.success(f"✅ DuckDuckGo: {len(results)} URLs")
-            return results[:10]
-        
-        if debug:
-            st.warning(f"DuckDuckGo solo devolvió {len(results)} URLs, probando método 3...")
-            
-    except Exception as e:
-        if debug:
-            st.error(f"Error en Método 2: {str(e)}")
-    
-    # MÉTODO 3: Fallback para demo
-    if debug:
-        st.write("**⚠️ Método 3: Fallback con sitios populares**")
-        st.warning("No se pudo hacer scraping. Usando sitios genéricos para demostración.")
-    
-    demo_urls = [
+    # Fallback
+    return [
         "https://www.mayoclinic.org/",
         "https://medlineplus.gov/spanish/",
         "https://www.cdc.gov/spanish/",
@@ -410,17 +307,13 @@ def get_google_top_10(keyword, debug=False):
         "https://www.health.harvard.edu/",
         "https://www.nhs.uk/",
         "https://www.clevelandclinic.org/"
-    ]
-    
-    return demo_urls[:10]
+    ][:10]
 
 def process_gsc_data(df):
-    
     df = df[~df.iloc[:, 0].astype(str).str.contains('Grand total|^total$', case=False, regex=True, na=False)]
     df = df[df.iloc[:, 0].notna()]
     
     if len(df) == 0:
-        st.error("❌ Sin datos después de limpiar")
         return None
     
     pos_cols = [col for col in df.columns if 'position' in col.lower()]
@@ -434,7 +327,6 @@ def process_gsc_data(df):
     ctr_cols = sorted(ctr_cols, key=lambda x: 'previous' in x.lower())
     
     if len(pos_cols) < 2 or len(click_cols) < 2:
-        st.error("❌ Faltan columnas necesarias en GSC")
         return None
     
     df['url'] = df.iloc[:, 0]
@@ -449,7 +341,6 @@ def process_gsc_data(df):
     df = df[(df['position_current'] >= 5) & (df['position_current'] <= 20)]
     
     if len(df) == 0:
-        st.warning("⚠️ No hay URLs en rango 5-20")
         return None
     
     df = df[df['clicks_current'] > 0]
@@ -457,38 +348,27 @@ def process_gsc_data(df):
     df = df[df['clicks_current'] >= (avg_clicks * 0.3)]
     
     if len(df) == 0:
-        st.warning("⚠️ No hay URLs con suficiente tráfico")
         return None
     
-    # Calcular cambios
     df['position_change'] = df['position_current'] - df['position_previous']
     df['clicks_change'] = ((df['clicks_current'] - df['clicks_previous']) / df['clicks_previous']) * 100
     
-    # NUEVA FÓRMULA PRIORIZADA
-    
-    # 1. SCORE DE POSICIÓN (50%)
     df['position_score'] = (20 - df['position_current']) / 15 * 100
     
-    # 2. SCORE DE TRÁFICO (30%)
     if df['clicks_current'].max() > df['clicks_current'].min():
         df['traffic_score'] = (df['clicks_current'] - df['clicks_current'].min()) / (df['clicks_current'].max() - df['clicks_current'].min()) * 100
     else:
         df['traffic_score'] = 50
     
-    # 3. SCORE DE TENDENCIA (20%)
     df['trend_score'] = 50
-    
     df.loc[df['position_change'] > 0, 'trend_score'] -= df['position_change'] * 5
     df.loc[df['clicks_change'] < 0, 'trend_score'] += df['clicks_change'] * 0.3
     df.loc[df['position_change'] < 0, 'trend_score'] += abs(df['position_change']) * 3
     df.loc[df['clicks_change'] > 0, 'trend_score'] += df['clicks_change'] * 0.2
-    
     df['trend_score'] = df['trend_score'].clip(0, 100)
     
-    # SCORE FINAL
     df['score'] = (df['position_score'] * 0.5) + (df['traffic_score'] * 0.3) + (df['trend_score'] * 0.2)
     
-    # BONIFICACIONES
     df['fell_from_page1'] = (df['position_previous'] <= 10) & (df['position_current'] > 10)
     df.loc[df['fell_from_page1'], 'score'] += 30
     df.loc[df['position_change'] > 3, 'score'] += 15
@@ -502,16 +382,11 @@ def process_gsc_data(df):
 st.title("🎯 Content Refresh Prioritizer")
 st.markdown("Descubre qué páginas optimizar primero basándote en Google Search Console")
 
-# Debug mode
-debug_mode = st.sidebar.checkbox("🐛 Modo Debug", value=False)
-
-# Inicializar session state
+# Session state
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
-if 'top_url_data' not in st.session_state:
-    st.session_state.top_url_data = None
-if 'current_metadata' not in st.session_state:
-    st.session_state.current_metadata = None
+if 'selected_url' not in st.session_state:
+    st.session_state.selected_url = None
 
 gsc_file = st.file_uploader("📊 Google Search Console CSV", type=['csv'])
 
@@ -527,207 +402,256 @@ if gsc_file:
                         st.error("❌ No se encontraron oportunidades")
                     else:
                         st.session_state.analysis_results = results
-                        st.session_state.top_url_data = results.iloc[0]
-                        
-                        top_url = st.session_state.top_url_data
-                        target_domain = extract_domain(top_url['url'])
-                        st.session_state.current_metadata = scrape_url_metadata(top_url['url'], target_domain)
-                        
                         st.rerun()
                         
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
     
+    # FASE 1: Mostrar tabla de URLs
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
-        top_url = st.session_state.top_url_data
-        current_metadata = st.session_state.current_metadata
         
         st.success(f"✅ {len(results)} oportunidades encontradas")
         
-        col_btn1, col_btn2 = st.columns([1, 4])
-        
-        with col_btn1:
-            if st.button("🔄 Nuevo análisis"):
-                st.session_state.analysis_results = None
-                st.session_state.top_url_data = None
-                st.session_state.current_metadata = None
-                st.rerun()
-        
-        with col_btn2:
-            st.link_button("💎 Comprar Versión Pro - Desbloquear Todas las URLs", "https://tudominio.com/checkout", type="primary")
+        if st.button("🔄 Nuevo análisis"):
+            st.session_state.analysis_results = None
+            st.session_state.selected_url = None
+            st.rerun()
         
         st.markdown("---")
-        st.subheader("🏆 TOP Oportunidad")
+        st.subheader("📋 URLs Priorizadas")
         
-        col1, col2, col3, col4 = st.columns(4)
+        # Preparar tabla para mostrar
+        display_df = pd.DataFrame({
+            '#': range(1, len(results) + 1),
+            'Score': results['score'].round(1),
+            'URL': results['url'].str[:60] + '...',
+            'Posición': results['position_current'].astype(int),
+            'Δ Pos': results['position_change'].astype(int),
+            'Clicks': results['clicks_current'].astype(int),
+            'Δ Clicks (%)': results['clicks_change'].round(1),
+            'CTR (%)': results['ctr_current'].round(1)
+        })
         
-        with col1:
-            st.metric("Score", f"{top_url['score']:.1f}/100")
+        # Mostrar tabla interactiva
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            height=400
+        )
         
-        with col2:
-            change_emoji = "🔴" if top_url['position_change'] > 0 else "🟢" if top_url['position_change'] < 0 else "⚪"
-            st.metric("Posición", 
-                     f"{int(top_url['position_current'])} {change_emoji}", 
-                     f"{top_url['position_change']:+.0f} posiciones")
+        st.info("💡 **Selecciona una URL** de la lista escribiendo su número para ver el análisis completo")
         
-        with col3:
-            st.metric("Clicks", 
-                     f"{int(top_url['clicks_current'])}", 
-                     f"{top_url['clicks_change']:+.1f}%")
+        # Input para seleccionar URL
+        selected_index = st.number_input(
+            "Ingresa el número (#) de la URL que quieres analizar:",
+            min_value=1,
+            max_value=len(results),
+            value=1,
+            step=1
+        )
         
-        with col4:
-            st.metric("CTR", f"{top_url['ctr_current']:.1f}%")
+        if st.button("🔍 Analizar URL seleccionada", type="primary"):
+            st.session_state.selected_url = results.iloc[selected_index - 1]
+            st.rerun()
         
-        st.markdown(f"**URL:** `{top_url['url']}`")
-        
-        if current_metadata and current_metadata['success']:
-            st.markdown("---")
-            st.subheader("🔍 Análisis On-Page")
+        # FASE 2: Análisis profundo de URL seleccionada
+        if st.session_state.selected_url is not None:
+            selected = st.session_state.selected_url
             
-            col1, col2, col3 = st.columns(3)
+            st.markdown("---")
+            st.markdown("---")
+            st.subheader("🎯 Análisis Profundo")
+            
+            # Header con métricas principales
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Word Count", current_metadata['word_count'])
-                st.metric("H1", current_metadata['h1_count'])
-                st.metric("H2", current_metadata['h2_count'])
+                st.metric("Score", f"{selected['score']:.1f}/100")
             
             with col2:
-                title_status = "✅" if 30 <= current_metadata['title_length'] <= 60 else "⚠️"
-                st.metric("Title Length", f"{current_metadata['title_length']} {title_status}")
+                # Color corregido: +pos = ROJO (empeoró), -pos = VERDE (mejoró)
+                pos_change = int(selected['position_change'])
+                if pos_change > 0:
+                    pos_color = "🔴"  # Empeoró
+                elif pos_change < 0:
+                    pos_color = "🟢"  # Mejoró
+                else:
+                    pos_color = "⚪"  # Sin cambio
                 
-                desc_status = "✅" if 120 <= current_metadata['description_length'] <= 160 else "⚠️"
-                st.metric("Meta Desc Length", f"{current_metadata['description_length']} {desc_status}")
-                
-                st.metric("Images sin ALT", current_metadata['images_without_alt'])
+                st.metric(
+                    "Posición", 
+                    f"{int(selected['position_current'])} {pos_color}", 
+                    f"{pos_change:+d} posiciones"
+                )
             
             with col3:
-                st.metric("Schemas", current_metadata['schemas_count'])
-                st.metric("FAQs", current_metadata['faqs_count'])
-                st.metric("Enlaces Internos", current_metadata['internal_links'])
+                st.metric(
+                    "Clicks", 
+                    f"{int(selected['clicks_current'])}", 
+                    f"{selected['clicks_change']:+.1f}%"
+                )
             
-            st.markdown("---")
-            st.subheader("💡 Recomendaciones IA")
+            with col4:
+                st.metric("CTR", f"{selected['ctr_current']:.1f}%")
             
-            with st.spinner("Generando análisis personalizado..."):
-                metrics = {
-                    'position': int(top_url['position_current']),
-                    'position_change': f"{top_url['position_change']:+.0f}",
-                    'clicks': int(top_url['clicks_current']),
-                    'clicks_change': top_url['clicks_change'],
-                    'impressions': int(top_url['impressions_current']),
-                    'ctr': top_url['ctr_current']
-                }
-                insight = get_groq_insight(top_url['url'], metrics, current_metadata)
+            st.markdown(f"**URL:** `{selected['url']}`")
             
-            st.info(insight)
+            # Scraping de metadata
+            with st.spinner("Analizando metadata de la página..."):
+                target_domain = extract_domain(selected['url'])
+                metadata = scrape_url_metadata(selected['url'], target_domain)
             
-            st.markdown("---")
-            st.subheader("🔗 Recomendaciones de Enlaces Internos")
-            
-            internal_link_recs = recommend_internal_links(top_url['url'], results, n=3)
-            
-            if internal_link_recs:
-                st.write(f"**Actual:** Tu página tiene {current_metadata['internal_links']} enlaces internos en el contenido.")
-                st.write("**Sugerencia:** Añade enlaces a estas páginas de alto rendimiento:")
+            if metadata['success']:
+                st.markdown("---")
+                st.subheader("🔍 Análisis On-Page")
                 
-                for idx, rec in enumerate(internal_link_recs, 1):
-                    st.write(f"{idx}. `{rec['url']}` (Posición: #{rec['position']}, Score: {rec['score']}/100)")
-            
-            st.markdown("---")
-            st.subheader("📊 Comparativa vs Top 10 de Google")
-            
-            keyword_input = st.text_input(
-                "Ingresa la keyword principal de esta URL:",
-                placeholder="Ej: tipos de colirios con y sin receta"
-            )
-            
-            if keyword_input:
-                if st.button("🔍 Comparar con Top 10", type="primary"):
-                    with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
-                        top_10_urls = get_google_top_10(keyword_input, debug=debug_mode)
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Word Count", metadata['word_count'])
+                    st.metric("H1", metadata['h1_count'])
+                    st.metric("H2", metadata['h2_count'])
+                
+                with col2:
+                    title_status = "✅" if 30 <= metadata['title_length'] <= 60 else "⚠️"
+                    st.metric("Title Length", f"{metadata['title_length']} {title_status}")
                     
-                    if top_10_urls and len(top_10_urls) > 0:
-                        with st.expander("🔗 URLs del Top 10 analizadas"):
-                            for idx, url in enumerate(top_10_urls, 1):
-                                st.write(f"{idx}. {url}")
+                    desc_status = "✅" if 120 <= metadata['description_length'] <= 160 else "⚠️"
+                    st.metric("Meta Desc Length", f"{metadata['description_length']} {desc_status}")
+                    
+                    st.metric("Images sin ALT", metadata['images_without_alt'])
+                
+                with col3:
+                    st.metric("Schemas", metadata['schemas_count'])
+                    st.metric("FAQs", metadata['faqs_count'])
+                    st.metric("Enlaces Internos", metadata['internal_links'])
+                
+                # Recomendaciones IA
+                st.markdown("---")
+                st.subheader("💡 Recomendaciones IA")
+                
+                with st.spinner("Generando análisis personalizado..."):
+                    metrics = {
+                        'position': int(selected['position_current']),
+                        'position_change': f"{int(selected['position_change']):+d}",
+                        'clicks': int(selected['clicks_current']),
+                        'clicks_change': selected['clicks_change'],
+                        'impressions': int(selected['impressions_current']),
+                        'ctr': selected['ctr_current']
+                    }
+                    insight = get_groq_insight(selected['url'], metrics, metadata)
+                
+                st.info(insight)
+                
+                # Enlaces internos
+                st.markdown("---")
+                st.subheader("🔗 Recomendaciones de Enlaces Internos")
+                
+                internal_link_recs = recommend_internal_links(selected['url'], results, n=3)
+                
+                if internal_link_recs:
+                    st.write(f"**Actual:** Tu página tiene {metadata['internal_links']} enlaces internos en el contenido.")
+                    st.write("**Sugerencia:** Añade enlaces a estas páginas de alto rendimiento:")
+                    
+                    for idx, rec in enumerate(internal_link_recs, 1):
+                        st.write(f"{idx}. `{rec['url']}` (Posición: #{rec['position']}, Score: {rec['score']}/100)")
+                
+                # Comparativa con Top 10
+                st.markdown("---")
+                st.subheader("📊 Comparativa vs Top 10 de Google")
+                
+                keyword_input = st.text_input(
+                    "Ingresa la keyword principal de esta URL:",
+                    placeholder="Ej: tipos de colirios con y sin receta"
+                )
+                
+                if keyword_input:
+                    if st.button("🔍 Comparar con Top 10", type="primary"):
+                        with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
+                            top_10_urls = get_google_top_10(keyword_input)
                         
-                        st.info(f"Analizando {len(top_10_urls)} URLs del top 10...")
-                        
-                        comparison_data = []
-                        competitors_metadata = []
-                        
-                        comparison_data.append({
-                            'Posición': f"#{int(top_url['position_current'])} (TU URL)",
-                            'Title Length': current_metadata['title_length'],
-                            'Desc Length': current_metadata['description_length'],
-                            'Word Count': current_metadata['word_count'],
-                            'H1': current_metadata['h1_count'],
-                            'H2': current_metadata['h2_count'],
-                            'H3': current_metadata['h3_count'],
-                            'Schemas': current_metadata['schemas_count'],
-                            'FAQs': current_metadata['faqs_count']
-                        })
-                        
-                        progress_bar = st.progress(0)
-                        for idx, url in enumerate(top_10_urls[:10], 1):
-                            with st.spinner(f"Analizando posición #{idx}..."):
-                                metadata = scrape_url_metadata(url)
-                                competitors_metadata.append(metadata)
-                                time.sleep(2)
-                                
-                                comparison_data.append({
-                                    'Posición': f"#{idx}",
-                                    'Title Length': metadata['title_length'],
-                                    'Desc Length': metadata['description_length'],
-                                    'Word Count': metadata['word_count'],
-                                    'H1': metadata['h1_count'],
-                                    'H2': metadata['h2_count'],
-                                    'H3': metadata['h3_count'],
-                                    'Schemas': metadata['schemas_count'],
-                                    'FAQs': metadata['faqs_count']
-                                })
-                                
-                                progress_bar.progress(idx / 10)
-                        
-                        progress_bar.empty()
-                        
-                        comparison_df = pd.DataFrame(comparison_data)
-                        
-                        avg_row = {
-                            'Posición': '📊 PROMEDIO TOP 10',
-                            'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
-                            'Desc Length': int(comparison_df.iloc[1:]['Desc Length'].mean()),
-                            'Word Count': int(comparison_df.iloc[1:]['Word Count'].mean()),
-                            'H1': round(comparison_df.iloc[1:]['H1'].mean(), 1),
-                            'H2': round(comparison_df.iloc[1:]['H2'].mean(), 1),
-                            'H3': round(comparison_df.iloc[1:]['H3'].mean(), 1),
-                            'Schemas': round(comparison_df.iloc[1:]['Schemas'].mean(), 1),
-                            'FAQs': round(comparison_df.iloc[1:]['FAQs'].mean(), 1)
-                        }
-                        
-                        comparison_df = pd.concat([comparison_df, pd.DataFrame([avg_row])], ignore_index=True)
-                        
-                        st.dataframe(comparison_df, use_container_width=True)
-                        
-                        st.markdown("---")
-                        st.subheader("📑 Recomendaciones de Headings para Optimizar")
-                        
-                        with st.spinner("Generando recomendaciones de estructura con IA..."):
-                            competitors_h2_sample = []
-                            for meta in competitors_metadata[:5]:
-                                if meta['success'] and meta.get('h2_tags'):
-                                    competitors_h2_sample.extend(meta['h2_tags'][:3])
+                        if top_10_urls:
+                            with st.expander("🔗 URLs del Top 10 analizadas"):
+                                for idx, url in enumerate(top_10_urls, 1):
+                                    st.write(f"{idx}. {url}")
                             
-                            heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
+                            st.info(f"Analizando {len(top_10_urls)} URLs del top 10...")
+                            
+                            comparison_data = []
+                            competitors_metadata = []
+                            
+                            comparison_data.append({
+                                'Posición': f"#{int(selected['position_current'])} (TU URL)",
+                                'Title Length': metadata['title_length'],
+                                'Desc Length': metadata['description_length'],
+                                'Word Count': metadata['word_count'],
+                                'H1': metadata['h1_count'],
+                                'H2': metadata['h2_count'],
+                                'H3': metadata['h3_count'],
+                                'Schemas': metadata['schemas_count'],
+                                'FAQs': metadata['faqs_count']
+                            })
+                            
+                            progress_bar = st.progress(0)
+                            for idx, url in enumerate(top_10_urls[:10], 1):
+                                with st.spinner(f"Analizando posición #{idx}..."):
+                                    comp_metadata = scrape_url_metadata(url)
+                                    competitors_metadata.append(comp_metadata)
+                                    time.sleep(2)
+                                    
+                                    comparison_data.append({
+                                        'Posición': f"#{idx}",
+                                        'Title Length': comp_metadata['title_length'],
+                                        'Desc Length': comp_metadata['description_length'],
+                                        'Word Count': comp_metadata['word_count'],
+                                        'H1': comp_metadata['h1_count'],
+                                        'H2': comp_metadata['h2_count'],
+                                        'H3': comp_metadata['h3_count'],
+                                        'Schemas': comp_metadata['schemas_count'],
+                                        'FAQs': comp_metadata['faqs_count']
+                                    })
+                                    
+                                    progress_bar.progress(idx / 10)
+                            
+                            progress_bar.empty()
+                            
+                            comparison_df = pd.DataFrame(comparison_data)
+                            
+                            avg_row = {
+                                'Posición': '📊 PROMEDIO TOP 10',
+                                'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
+                                'Desc Length': int(comparison_df.iloc[1:]['Desc Length'].mean()),
+                                'Word Count': int(comparison_df.iloc[1:]['Word Count'].mean()),
+                                'H1': round(comparison_df.iloc[1:]['H1'].mean(), 1),
+                                'H2': round(comparison_df.iloc[1:]['H2'].mean(), 1),
+                                'H3': round(comparison_df.iloc[1:]['H3'].mean(), 1),
+                                'Schemas': round(comparison_df.iloc[1:]['Schemas'].mean(), 1),
+                                'FAQs': round(comparison_df.iloc[1:]['FAQs'].mean(), 1)
+                            }
+                            
+                            comparison_df = pd.concat([comparison_df, pd.DataFrame([avg_row])], ignore_index=True)
+                            
+                            st.dataframe(comparison_df, use_container_width=True)
+                            
+                            # Recomendaciones de headings con IA
+                            st.markdown("---")
+                            st.subheader("📑 Recomendaciones de Headings para Optimizar")
+                            
+                            with st.spinner("Generando recomendaciones de estructura con IA..."):
+                                competitors_h2_sample = []
+                                for meta in competitors_metadata[:5]:
+                                    if meta['success'] and meta.get('h2_tags'):
+                                        competitors_h2_sample.extend(meta['h2_tags'][:3])
+                                
+                                heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
 
 **Keyword objetivo:** {keyword_input}
 
 **Headings actuales:**
-- H1: {', '.join(current_metadata['h1_tags'][:2]) if current_metadata['h1_tags'] else 'Ninguno'}
-- H2 actuales ({current_metadata['h2_count']}): {', '.join(current_metadata['h2_tags'][:5]) if current_metadata['h2_tags'] else 'Ninguno'}
+- H1: {', '.join(metadata['h1_tags'][:2]) if metadata['h1_tags'] else 'Ninguno'}
+- H2 actuales ({metadata['h2_count']}): {', '.join(metadata['h2_tags'][:5]) if metadata['h2_tags'] else 'Ninguno'}
 
 **Promedio competidores:**
 - H2 promedio: {avg_row['H2']:.0f}
@@ -758,30 +682,31 @@ Formato:
 - [H3 ejemplo 2]
 - [H3 ejemplo 3]"""
 
-                            try:
-                                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-                                
-                                chat_completion = client.chat.completions.create(
-                                    messages=[{"role": "user", "content": heading_prompt}],
-                                    model="llama-3.3-70b-versatile",
-                                    temperature=0.4,
-                                    max_tokens=800
-                                )
-                                
-                                heading_recommendations = chat_completion.choices[0].message.content
-                                st.markdown(heading_recommendations)
-                                
-                            except Exception as e:
-                                st.error(f"Error generando recomendaciones: {str(e)}")
-                    
-                    else:
-                        st.error("❌ No se pudo obtener el top 10.")
+                                try:
+                                    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                                    
+                                    chat_completion = client.chat.completions.create(
+                                        messages=[{"role": "user", "content": heading_prompt}],
+                                        model="llama-3.3-70b-versatile",
+                                        temperature=0.4,
+                                        max_tokens=800
+                                    )
+                                    
+                                    heading_recommendations = chat_completion.choices[0].message.content
+                                    st.markdown(heading_recommendations)
+                                    
+                                except Exception as e:
+                                    st.error(f"Error generando recomendaciones: {str(e)}")
+            else:
+                st.warning("⚠️ No se pudo analizar la página")
+            
+            # Botón para volver a la lista
+            st.markdown("---")
+            if st.button("⬅️ Volver a la lista de URLs"):
+                st.session_state.selected_url = None
+                st.rerun()
         
-        else:
-            st.warning("⚠️ No se pudo analizar la página")
-        
-        st.markdown("---")
-        
+        # Expander con info de cálculo
         with st.expander("ℹ️ ¿Cómo se calcula la prioridad?"):
             st.markdown("""
             **Fórmula de Score:**
@@ -794,18 +719,11 @@ Formato:
             - ⚠️ **+15 puntos**: Si perdió más de 3 posiciones
             - 📊 **+10 puntos**: Si perdió más del 20% de tráfico
             
-            **Resultado:** URLs que cayeron de página 1 o perdieron tráfico significativo aparecen primero.
+            **Colores de posición:**
+            - 🔴 Rojo: Empeoró (perdió posiciones)
+            - 🟢 Verde: Mejoró (ganó posiciones)
+            - ⚪ Blanco: Sin cambios
             """)
-        
-        st.markdown("---")
-        
-        col_upgrade1, col_upgrade2 = st.columns([3, 1])
-        
-        with col_upgrade1:
-            st.info(f"🔓 **Desbloquea las otras {len(results)-1} URLs prioritarias con la versión Pro**")
-        
-        with col_upgrade2:
-            st.link_button("💎 Comprar Pro", "https://tudominio.com/checkout", type="primary")
                 
 else:
     st.info("👆 Sube tu CSV de Google Search Console para comenzar")
@@ -821,17 +739,5 @@ else:
         
         ---
         
-        ### 📺 Video Tutorial (próximamente)
-        
+        💡 **Tip:** Asegúrate de comparar periodos iguales para obtener datos precisos de tendencias.
         """)
-        
-        # Placeholder para video de YouTube
-        # Descomenta y reemplaza VIDEO_ID cuando tengas el video
-        # st.markdown("[![Tutorial GSC](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)")
-        
-        st.info("💡 **Tip:** Asegúrate de comparar periodos iguales para obtener datos precisos de tendencias.")
-        
-        # Aquí puedes agregar imágenes locales cuando las tengas
-        # st.image("tutorial_1.png", caption="Paso 1: Performance → Pages")
-        # st.image("tutorial_2.png", caption="Paso 2: Compare")
-        # st.image("tutorial_3.png", caption="Paso 3: Export CSV")
