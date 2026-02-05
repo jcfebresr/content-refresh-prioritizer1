@@ -580,6 +580,11 @@ if gsc_file:
                         top_10_urls = get_google_top_10(keyword_input, debug=debug_mode)
                     
                     if top_10_urls and len(top_10_urls) > 0:
+                        # MOSTRAR URLs OBTENIDAS
+                        with st.expander("🔗 URLs del Top 10 analizadas"):
+                            for idx, url in enumerate(top_10_urls, 1):
+                                st.write(f"{idx}. {url}")
+                        
                         st.info(f"Analizando {len(top_10_urls)} URLs del top 10...")
                         
                         comparison_data = []
@@ -638,52 +643,71 @@ if gsc_file:
                         
                         st.dataframe(comparison_df, use_container_width=True)
                         
+                        # NUEVA SECCIÓN: Recomendaciones de Headings con IA
                         st.markdown("---")
-                        st.subheader("📑 Comparativa de Headings")
+                        st.subheader("📑 Recomendaciones de Headings para Optimizar")
                         
-                        tab1, tab2, tab3 = st.tabs(["H1", "H2", "H3"])
-                        
-                        with tab1:
-                            st.write("**Tus H1:**")
-                            if current_metadata['h1_tags']:
-                                for h1 in current_metadata['h1_tags']:
-                                    st.write(f"- {h1}")
-                            else:
-                                st.warning("⚠️ No tienes H1")
-                            
-                            st.write("**H1 de Competidores (Top 5):**")
-                            for idx, meta in enumerate(competitors_metadata[:5], 1):
-                                if meta['success'] and meta.get('h1_tags'):
-                                    st.write(f"**Posición #{idx}:**")
-                                    for h1 in meta['h1_tags'][:2]:
-                                        st.write(f"- {h1}")
-                        
-                        with tab2:
-                            st.write("**Tus H2 (primeros 10):**")
-                            if current_metadata['h2_tags']:
-                                for h2 in current_metadata['h2_tags'][:10]:
-                                    st.write(f"- {h2}")
-                            else:
-                                st.warning("⚠️ No tienes H2")
-                            
-                            st.write("**H2 de Competidores (Top 3):**")
-                            for idx, meta in enumerate(competitors_metadata[:3], 1):
+                        with st.spinner("Generando recomendaciones de estructura con IA..."):
+                            # Preparar contexto para la IA
+                            competitors_h2_sample = []
+                            for meta in competitors_metadata[:5]:
                                 if meta['success'] and meta.get('h2_tags'):
-                                    st.write(f"**Posición #{idx}:**")
-                                    for h2 in meta['h2_tags'][:5]:
-                                        st.write(f"- {h2}")
-                        
-                        with tab3:
-                            st.write("**Tus H3 (primeros 10):**")
-                            if current_metadata['h3_tags']:
-                                for h3 in current_metadata['h3_tags'][:10]:
-                                    st.write(f"- {h3}")
-                            else:
-                                st.info("No tienes H3")
+                                    competitors_h2_sample.extend(meta['h2_tags'][:3])
                             
-                            avg_h3 = sum([len(m.get('h3_tags', [])) for m in competitors_metadata]) / len(competitors_metadata)
-                            st.metric("Promedio H3 en Top 10", f"{avg_h3:.1f}")
+                            heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
+
+**Keyword objetivo:** {keyword_input}
+
+**Headings actuales:**
+- H1: {', '.join(current_metadata['h1_tags'][:2]) if current_metadata['h1_tags'] else 'Ninguno'}
+- H2 actuales ({current_metadata['h2_count']}): {', '.join(current_metadata['h2_tags'][:5]) if current_metadata['h2_tags'] else 'Ninguno'}
+
+**Promedio competidores:**
+- H2 promedio: {avg_row['H2']:.0f}
+- Ejemplos de H2 en competidores: {', '.join(competitors_h2_sample[:8]) if competitors_h2_sample else 'No disponible'}
+
+**Genera:**
+
+1. **H1 recomendado** (1 solo, optimizado para la keyword)
+
+2. **5-8 H2 recomendados** que deberías tener, priorizados por:
+   - Intención de búsqueda del usuario
+   - Cobertura de subtemas importantes
+   - Keywords relacionadas long-tail
+
+3. **3 H3 de ejemplo** para uno de los H2
+
+Formato:
+**H1:**
+[Tu H1 optimizado]
+
+**H2 (ordenados por prioridad):**
+1. [H2 principal]
+2. [H2 secundario]
+...
+
+**H3 de ejemplo para H2 #1:**
+- [H3 ejemplo 1]
+- [H3 ejemplo 2]
+- [H3 ejemplo 3]"""
+
+                            try:
+                                client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+                                
+                                chat_completion = client.chat.completions.create(
+                                    messages=[{"role": "user", "content": heading_prompt}],
+                                    model="llama-3.3-70b-versatile",
+                                    temperature=0.4,
+                                    max_tokens=800
+                                )
+                                
+                                heading_recommendations = chat_completion.choices[0].message.content
+                                st.markdown(heading_recommendations)
+                                
+                            except Exception as e:
+                                st.error(f"Error generando recomendaciones: {str(e)}")
                         
+                        # GAPs vs Competencia
                         st.markdown("---")
                         st.subheader("💡 GAPs vs Competencia")
                         
@@ -691,7 +715,7 @@ if gsc_file:
                         
                         avg_words = avg_row['Word Count']
                         if current_metadata['word_count'] < avg_words * 0.8:
-                            recs.append(f"📝 **Contenido:** {current_metadata['word_count']} palabras vs {avg_words}. Amplía +{int(avg_words - current_metadata['word_count'])}.")
+                            recs.append(f"📝 **Contenido:** {current_metadata['word_count']} palabras vs {avg_words}. Amplía +{int(avg_words - current_metadata['word_count'])} palabras.")
                         
                         avg_h2 = avg_row['H2']
                         if current_metadata['h2_count'] < avg_h2 * 0.7:
