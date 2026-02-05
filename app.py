@@ -10,11 +10,131 @@ import re
 
 st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", layout="wide")
 
-def get_groq_insight(url, metrics, metadata):
+# Selector de idioma
+language = st.sidebar.selectbox("🌐 Language / Idioma", ["Español", "English"])
+
+# Textos según idioma
+if language == "Español":
+    TEXTS = {
+        'title': '🎯 Content Refresh Prioritizer',
+        'subtitle': 'Descubre qué páginas optimizar primero basándote en Google Search Console',
+        'upload': '📊 Google Search Console CSV',
+        'analyze_btn': '🚀 Analizar',
+        'analyzing': 'Analizando datos...',
+        'success': 'oportunidades encontradas',
+        'new_analysis': '🔄 Nuevo análisis',
+        'prioritized_urls': '📋 URLs Priorizadas',
+        'select_url': '💡 **Selecciona una URL** de la lista escribiendo su número para ver el análisis completo',
+        'enter_number': 'Ingresa el número (#) de la URL que quieres analizar:',
+        'analyze_selected': '🔍 Analizar URL seleccionada',
+        'deep_analysis': '🎯 Análisis Profundo',
+        'on_page': '🔍 Análisis On-Page',
+        'ai_recommendations': '💡 Recomendaciones IA',
+        'generating': 'Generando análisis personalizado...',
+        'internal_links': '🔗 Recomendaciones de Enlaces Internos',
+        'current': 'Actual',
+        'suggestion': 'Sugerencia',
+        'your_page_has': 'Tu página tiene',
+        'internal_links_text': 'enlaces internos en el contenido.',
+        'add_links_to': 'Añade enlaces a estas páginas de alto rendimiento:',
+        'comparativa': '📊 Comparativa vs Top 10 de Google',
+        'auto_scraping': '🤖 Scraping Automático',
+        'manual_input': '✍️ Input Manual',
+        'auto_desc': '**Intenta obtener automáticamente las URLs del top 10 de Google**',
+        'enter_keyword': 'Ingresa la keyword principal de esta URL:',
+        'keyword_placeholder': 'Ej: how to build app with bubble',
+        'get_top10': '🔍 Obtener Top 10 automáticamente',
+        'getting_top10': 'Obteniendo top 10 para',
+        'urls_obtained': 'Se obtuvieron',
+        'obtained_urls': 'URLs obtenidas',
+        'analyze_urls': '▶️ Analizar estas URLs',
+        'scraping_blocked': 'No se pudo obtener el top 10 automáticamente',
+        'use_manual': 'Google está bloqueando el scraping. Usa el método **Input Manual** en la pestaña de al lado.',
+        'manual_desc': '**Pega manualmente las URLs del top 10 de Google**',
+        'manual_tip': '💡 Abre Google en modo incógnito, busca tu keyword, y copia las URLs de los primeros 10 resultados',
+        'keyword': 'Keyword:',
+        'paste_urls': 'Pega las URLs del top 10 (una por línea):',
+        'urls_ready': 'URLs listas para analizar',
+        'need_3_urls': 'Necesitas al menos 3 URLs válidas',
+        'analyzing_urls': 'Analizando',
+        'for_keyword': 'URLs para la keyword:',
+        'analyzing_position': 'Analizando posición',
+        'heading_recommendations': '📑 Recomendaciones de Headings Faltantes',
+        'generating_headings': 'Generando análisis de headings faltantes...',
+        'new_comparativa': '🔄 Nueva comparativa',
+        'back_to_list': '⬅️ Volver a la lista de URLs',
+        'priority_calculation': '¿Cómo se calcula la prioridad?',
+        'tutorial': '¿Cómo exportar desde GSC?',
+        'upload_csv': 'Sube tu CSV de Google Search Console para comenzar',
+        'fell': 'Cayó',
+        'rose': 'Subió',
+        'pos': 'pos',
+        'no_change': 'Sin cambio'
+    }
+else:
+    TEXTS = {
+        'title': '🎯 Content Refresh Prioritizer',
+        'subtitle': 'Discover which pages to optimize first based on Google Search Console',
+        'upload': '📊 Google Search Console CSV',
+        'analyze_btn': '🚀 Analyze',
+        'analyzing': 'Analyzing data...',
+        'success': 'opportunities found',
+        'new_analysis': '🔄 New analysis',
+        'prioritized_urls': '📋 Prioritized URLs',
+        'select_url': '💡 **Select a URL** from the list by entering its number to see the full analysis',
+        'enter_number': 'Enter the number (#) of the URL you want to analyze:',
+        'analyze_selected': '🔍 Analyze selected URL',
+        'deep_analysis': '🎯 Deep Analysis',
+        'on_page': '🔍 On-Page Analysis',
+        'ai_recommendations': '💡 AI Recommendations',
+        'generating': 'Generating personalized analysis...',
+        'internal_links': '🔗 Internal Links Recommendations',
+        'current': 'Current',
+        'suggestion': 'Suggestion',
+        'your_page_has': 'Your page has',
+        'internal_links_text': 'internal links in content.',
+        'add_links_to': 'Add links to these high-performance pages:',
+        'comparativa': '📊 Comparison vs Google Top 10',
+        'auto_scraping': '🤖 Automatic Scraping',
+        'manual_input': '✍️ Manual Input',
+        'auto_desc': '**Try to automatically get the top 10 URLs from Google**',
+        'enter_keyword': 'Enter the main keyword for this URL:',
+        'keyword_placeholder': 'Ex: how to build app with bubble',
+        'get_top10': '🔍 Get Top 10 automatically',
+        'getting_top10': 'Getting top 10 for',
+        'urls_obtained': 'URLs obtained:',
+        'obtained_urls': 'Obtained URLs',
+        'analyze_urls': '▶️ Analyze these URLs',
+        'scraping_blocked': 'Could not get top 10 automatically',
+        'use_manual': 'Google is blocking scraping. Use the **Manual Input** method in the next tab.',
+        'manual_desc': '**Manually paste the top 10 URLs from Google**',
+        'manual_tip': '💡 Open Google in incognito mode, search your keyword, and copy the URLs of the first 10 results',
+        'keyword': 'Keyword:',
+        'paste_urls': 'Paste top 10 URLs (one per line):',
+        'urls_ready': 'URLs ready to analyze',
+        'need_3_urls': 'You need at least 3 valid URLs',
+        'analyzing_urls': 'Analyzing',
+        'for_keyword': 'URLs for keyword:',
+        'analyzing_position': 'Analyzing position',
+        'heading_recommendations': '📑 Missing Headings Recommendations',
+        'generating_headings': 'Generating missing headings analysis...',
+        'new_comparativa': '🔄 New comparison',
+        'back_to_list': '⬅️ Back to URL list',
+        'priority_calculation': 'How is priority calculated?',
+        'tutorial': 'How to export from GSC?',
+        'upload_csv': 'Upload your Google Search Console CSV to start',
+        'fell': 'Fell',
+        'rose': 'Rose',
+        'pos': 'pos',
+        'no_change': 'No change'
+    }
+
+def get_groq_insight(url, metrics, metadata, lang):
     try:
         client = Groq(api_key=st.secrets["GROQ_API_KEY"])
         
-        prompt = f"""Eres un experto SEO. Analiza esta URL y genera 3 recomendaciones ESPECÍFICAS y ACCIONABLES en español:
+        if lang == "Español":
+            prompt = f"""Eres un experto SEO. Analiza esta URL y genera 3 recomendaciones ESPECÍFICAS y ACCIONABLES en español:
 
 URL: {url}
 
@@ -36,6 +156,29 @@ Genera 3 recomendaciones concretas priorizadas por impacto. Cada una en 1 línea
 1. [Acción específica con número/dato]
 2. [Acción específica con número/dato]
 3. [Acción específica con número/dato]"""
+        else:
+            prompt = f"""You are an SEO expert. Analyze this URL and generate 3 SPECIFIC and ACTIONABLE recommendations in English:
+
+URL: {url}
+
+**GSC Data:**
+- Position: {metrics['position']} (change: {metrics['position_change']})
+- Clicks: {metrics['clicks']} (change: {metrics['clicks_change']}%)
+- CTR: {metrics['ctr']:.1f}%
+
+**On-Page Data:**
+- Title: "{metadata['title']}" ({metadata['title_length']} characters)
+- Meta Description: ({metadata['description_length']} characters)
+- Word Count: {metadata['word_count']} words
+- H1: {metadata['h1_count']}, H2: {metadata['h2_count']}, H3: {metadata['h3_count']}
+- Schemas: {metadata['schemas_count']}
+- FAQs: {metadata['faqs_count']}
+- Internal links in content: {metadata['internal_links']}
+
+Generate 3 concrete recommendations prioritized by impact. Each in 1 line, format:
+1. [Specific action with number/data]
+2. [Specific action with number/data]
+3. [Specific action with number/data]"""
 
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
@@ -45,7 +188,7 @@ Genera 3 recomendaciones concretas priorizadas por impacto. Cada una en 1 línea
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"Error generando insight: {str(e)}"
+        return f"Error generating insight: {str(e)}"
 
 def clean_number(val):
     if pd.isna(val):
@@ -240,13 +383,7 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     return recommendations
 
 def get_google_top_10(keyword, debug=False):
-    """Scrape top 10 con intentos mejorados"""
-    
-    # Intentar con DuckDuckGo primero (más permisivo)
     try:
-        if debug:
-            st.write("**🦆 Intentando DuckDuckGo**")
-        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
@@ -267,19 +404,12 @@ def get_google_top_10(keyword, debug=False):
                     break
         
         if len(results) >= 5:
-            if debug:
-                st.success(f"✅ DuckDuckGo: {len(results)} URLs")
             return results[:10]
             
-    except Exception as e:
-        if debug:
-            st.error(f"DuckDuckGo falló: {str(e)}")
+    except:
+        pass
     
-    # Intentar Google
     try:
-        if debug:
-            st.write("**🔍 Intentando Google**")
-        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -296,7 +426,6 @@ def get_google_top_10(keyword, debug=False):
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
         
-        # Probar múltiples selectores
         for selector in [
             soup.find_all('div', class_='g'),
             soup.find_all('div', class_='yuRUbf'),
@@ -307,11 +436,9 @@ def get_google_top_10(keyword, debug=False):
                 if link:
                     href = link.get('href', '')
                     
-                    # Limpiar /url?q=
                     if '/url?q=' in href:
                         href = href.split('/url?q=')[1].split('&')[0]
                     
-                    # Validar
                     if (href.startswith('http') and 
                         'google.com' not in href and 
                         'youtube.com' not in href and
@@ -322,15 +449,11 @@ def get_google_top_10(keyword, debug=False):
                 break
         
         if len(results) >= 5:
-            if debug:
-                st.success(f"✅ Google: {len(results)} URLs")
             return results[:10]
             
-    except Exception as e:
-        if debug:
-            st.error(f"Google falló: {str(e)}")
+    except:
+        pass
     
-    # Si todo falla, retornar lista vacía (NO fallback falso)
     return []
 
 def process_gsc_data(df):
@@ -403,8 +526,8 @@ def process_gsc_data(df):
     return df
 
 # UI
-st.title("🎯 Content Refresh Prioritizer")
-st.markdown("Descubre qué páginas optimizar primero basándote en Google Search Console")
+st.title(TEXTS['title'])
+st.markdown(TEXTS['subtitle'])
 
 # Session state
 if 'analysis_results' not in st.session_state:
@@ -412,18 +535,18 @@ if 'analysis_results' not in st.session_state:
 if 'selected_url' not in st.session_state:
     st.session_state.selected_url = None
 
-gsc_file = st.file_uploader("📊 Google Search Console CSV", type=['csv'])
+gsc_file = st.file_uploader(TEXTS['upload'], type=['csv'])
 
 if gsc_file:
     if st.session_state.analysis_results is None:
-        if st.button("🚀 Analizar", type="primary"):
-            with st.spinner("Analizando datos..."):
+        if st.button(TEXTS['analyze_btn'], type="primary"):
+            with st.spinner(TEXTS['analyzing']):
                 try:
                     gsc_df = pd.read_csv(gsc_file, encoding='utf-8', on_bad_lines='skip')
                     results = process_gsc_data(gsc_df)
                     
                     if results is None or len(results) == 0:
-                        st.error("❌ No se encontraron oportunidades")
+                        st.error("❌ No opportunities found")
                     else:
                         st.session_state.analysis_results = results
                         st.rerun()
@@ -435,17 +558,16 @@ if gsc_file:
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         
-        st.success(f"✅ {len(results)} oportunidades encontradas")
+        st.success(f"✅ {len(results)} {TEXTS['success']}")
         
-        if st.button("🔄 Nuevo análisis"):
+        if st.button(TEXTS['new_analysis']):
             st.session_state.analysis_results = None
             st.session_state.selected_url = None
             st.rerun()
         
         st.markdown("---")
-        st.subheader("📋 URLs Priorizadas")
+        st.subheader(TEXTS['prioritized_urls'])
         
-        # Preparar tabla para mostrar
         display_df = pd.DataFrame({
             '#': range(1, len(results) + 1),
             'Score': results['score'].round(1),
@@ -457,7 +579,6 @@ if gsc_file:
             'CTR (%)': results['ctr_current'].round(1)
         })
         
-        # Mostrar tabla interactiva
         st.dataframe(
             display_df,
             use_container_width=True,
@@ -465,49 +586,52 @@ if gsc_file:
             height=400
         )
         
-        st.info("💡 **Selecciona una URL** de la lista escribiendo su número para ver el análisis completo")
+        st.info(TEXTS['select_url'])
         
-        # Input para seleccionar URL
         selected_index = st.number_input(
-            "Ingresa el número (#) de la URL que quieres analizar:",
+            TEXTS['enter_number'],
             min_value=1,
             max_value=len(results),
             value=1,
             step=1
         )
         
-        if st.button("🔍 Analizar URL seleccionada", type="primary"):
+        if st.button(TEXTS['analyze_selected'], type="primary"):
             st.session_state.selected_url = results.iloc[selected_index - 1]
             st.rerun()
         
-        # FASE 2: Análisis profundo de URL seleccionada
+        # FASE 2: Análisis profundo
         if st.session_state.selected_url is not None:
             selected = st.session_state.selected_url
             
             st.markdown("---")
             st.markdown("---")
-            st.subheader("🎯 Análisis Profundo")
+            st.subheader(TEXTS['deep_analysis'])
             
-            # Header con métricas principales
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.metric("Score", f"{selected['score']:.1f}/100")
             
             with col2:
-                # Color corregido: +pos = ROJO (empeoró), -pos = VERDE (mejoró)
                 pos_change = int(selected['position_change'])
+                
                 if pos_change > 0:
-                    pos_color = "🔴"  # Empeoró
+                    # Número subió = Empeoró
+                    pos_color = "🔴"
+                    pos_text = f"{TEXTS['fell']} {pos_change} {TEXTS['pos']}"
                 elif pos_change < 0:
-                    pos_color = "🟢"  # Mejoró
+                    # Número bajó = Mejoró
+                    pos_color = "🟢"
+                    pos_text = f"{TEXTS['rose']} {abs(pos_change)} {TEXTS['pos']}"
                 else:
-                    pos_color = "⚪"  # Sin cambio
+                    pos_color = "⚪"
+                    pos_text = TEXTS['no_change']
                 
                 st.metric(
                     "Posición", 
                     f"{int(selected['position_current'])} {pos_color}", 
-                    f"{pos_change:+d} posiciones"
+                    pos_text
                 )
             
             with col3:
@@ -522,14 +646,13 @@ if gsc_file:
             
             st.markdown(f"**URL:** `{selected['url']}`")
             
-            # Scraping de metadata
-            with st.spinner("Analizando metadata de la página..."):
+            with st.spinner(f"{TEXTS['analyzing']}..."):
                 target_domain = extract_domain(selected['url'])
                 metadata = scrape_url_metadata(selected['url'], target_domain)
             
             if metadata['success']:
                 st.markdown("---")
-                st.subheader("🔍 Análisis On-Page")
+                st.subheader(TEXTS['on_page'])
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -552,11 +675,10 @@ if gsc_file:
                     st.metric("FAQs", metadata['faqs_count'])
                     st.metric("Enlaces Internos", metadata['internal_links'])
                 
-                # Recomendaciones IA
                 st.markdown("---")
-                st.subheader("💡 Recomendaciones IA")
+                st.subheader(TEXTS['ai_recommendations'])
                 
-                with st.spinner("Generando análisis personalizado..."):
+                with st.spinner(TEXTS['generating']):
                     metrics = {
                         'position': int(selected['position_current']),
                         'position_change': f"{int(selected['position_change']):+d}",
@@ -565,99 +687,94 @@ if gsc_file:
                         'impressions': int(selected['impressions_current']),
                         'ctr': selected['ctr_current']
                     }
-                    insight = get_groq_insight(selected['url'], metrics, metadata)
+                    insight = get_groq_insight(selected['url'], metrics, metadata, language)
                 
                 st.info(insight)
                 
-                # Enlaces internos
                 st.markdown("---")
-                st.subheader("🔗 Recomendaciones de Enlaces Internos")
+                st.subheader(TEXTS['internal_links'])
                 
                 internal_link_recs = recommend_internal_links(selected['url'], results, n=3)
                 
                 if internal_link_recs:
-                    st.write(f"**Actual:** Tu página tiene {metadata['internal_links']} enlaces internos en el contenido.")
-                    st.write("**Sugerencia:** Añade enlaces a estas páginas de alto rendimiento:")
+                    st.write(f"**{TEXTS['current']}:** {TEXTS['your_page_has']} {metadata['internal_links']} {TEXTS['internal_links_text']}")
+                    st.write(f"**{TEXTS['suggestion']}:** {TEXTS['add_links_to']}")
                     
                     for idx, rec in enumerate(internal_link_recs, 1):
                         st.write(f"{idx}. `{rec['url']}` (Posición: #{rec['position']}, Score: {rec['score']}/100)")
                 
-                # Comparativa con Top 10
                 st.markdown("---")
-                st.subheader("📊 Comparativa vs Top 10 de Google")
+                st.subheader(TEXTS['comparativa'])
                 
-                # Tabs para método automático o manual
-                tab1, tab2 = st.tabs(["🤖 Scraping Automático", "✍️ Input Manual"])
+                tab1, tab2 = st.tabs([TEXTS['auto_scraping'], TEXTS['manual_input']])
                 
                 with tab1:
-                    st.markdown("**Intenta obtener automáticamente las URLs del top 10 de Google**")
+                    st.markdown(TEXTS['auto_desc'])
                     
                     keyword_input = st.text_input(
-                        "Ingresa la keyword principal de esta URL:",
-                        placeholder="Ej: how to build app with bubble",
+                        TEXTS['enter_keyword'],
+                        placeholder=TEXTS['keyword_placeholder'],
                         key="keyword_auto"
                     )
                     
                     if keyword_input:
-                        if st.button("🔍 Obtener Top 10 automáticamente", type="primary"):
-                            with st.spinner(f"Obteniendo top 10 para '{keyword_input}'..."):
-                                top_10_urls = get_google_top_10(keyword_input, debug=False)
+                        if st.button(TEXTS['get_top10'], type="primary"):
+                            with st.spinner(f"{TEXTS['getting_top10']} '{keyword_input}'..."):
+                                top_10_urls = get_google_top_10(keyword_input)
                             
                             if top_10_urls and len(top_10_urls) >= 5:
                                 st.session_state['top_10_urls'] = top_10_urls
                                 st.session_state['keyword'] = keyword_input
-                                st.success(f"✅ Se obtuvieron {len(top_10_urls)} URLs")
+                                st.success(f"✅ {TEXTS['urls_obtained']} {len(top_10_urls)} URLs")
                                 
-                                with st.expander("🔗 URLs obtenidas"):
+                                with st.expander(f"🔗 {TEXTS['obtained_urls']}"):
                                     for idx, url in enumerate(top_10_urls, 1):
                                         st.write(f"{idx}. {url}")
                                 
-                                if st.button("▶️ Analizar estas URLs", type="primary", key="analyze_auto"):
+                                if st.button(TEXTS['analyze_urls'], type="primary", key="analyze_auto"):
                                     st.session_state['start_analysis'] = True
                                     st.rerun()
                             else:
-                                st.error("❌ No se pudo obtener el top 10 automáticamente")
-                                st.warning("💡 Google está bloqueando el scraping. Usa el método **Input Manual** en la pestaña de al lado.")
+                                st.error(f"❌ {TEXTS['scraping_blocked']}")
+                                st.warning(f"💡 {TEXTS['use_manual']}")
                 
                 with tab2:
-                    st.markdown("**Pega manualmente las URLs del top 10 de Google**")
-                    st.info("💡 Abre Google en modo incógnito, busca tu keyword, y copia las URLs de los primeros 10 resultados")
+                    st.markdown(TEXTS['manual_desc'])
+                    st.info(TEXTS['manual_tip'])
                     
                     keyword_manual = st.text_input(
-                        "Keyword:",
-                        placeholder="Ej: how to build app with bubble",
+                        f"{TEXTS['keyword']}",
+                        placeholder=TEXTS['keyword_placeholder'],
                         key="keyword_manual"
                     )
                     
                     urls_manual = st.text_area(
-                        "Pega las URLs del top 10 (una por línea):",
+                        TEXTS['paste_urls'],
                         placeholder="https://example.com/page1\nhttps://example.com/page2\n...",
                         height=200,
                         key="urls_manual"
                     )
                     
                     if keyword_manual and urls_manual:
-                        if st.button("▶️ Analizar estas URLs", type="primary", key="analyze_manual"):
-                            # Procesar URLs
+                        if st.button(TEXTS['analyze_urls'], type="primary", key="analyze_manual"):
                             urls = [url.strip() for url in urls_manual.split('\n') if url.strip() and url.startswith('http')]
                             
                             if len(urls) >= 3:
                                 st.session_state['top_10_urls'] = urls[:10]
                                 st.session_state['keyword'] = keyword_manual
                                 st.session_state['start_analysis'] = True
-                                st.success(f"✅ {len(urls[:10])} URLs listas para analizar")
+                                st.success(f"✅ {len(urls[:10])} {TEXTS['urls_ready']}")
                                 st.rerun()
                             else:
-                                st.error("❌ Necesitas al menos 3 URLs válidas")
+                                st.error(f"❌ {TEXTS['need_3_urls']}")
                 
-                # Ejecutar análisis si está activado
                 if st.session_state.get('start_analysis'):
                     top_10_urls = st.session_state.get('top_10_urls', [])
                     keyword = st.session_state.get('keyword', '')
                     
                     if top_10_urls and keyword:
                         st.markdown("---")
-                        st.info(f"Analizando {len(top_10_urls)} URLs para la keyword: **{keyword}**")
+                        st.info(f"{TEXTS['analyzing_urls']} {len(top_10_urls)} {TEXTS['for_keyword']} **{keyword}**")
                         
                         comparison_data = []
                         competitors_metadata = []
@@ -676,7 +793,7 @@ if gsc_file:
                         
                         progress_bar = st.progress(0)
                         for idx, url in enumerate(top_10_urls[:10], 1):
-                            with st.spinner(f"Analizando posición #{idx}: {url[:50]}..."):
+                            with st.spinner(f"{TEXTS['analyzing_position']} #{idx}: {url[:50]}..."):
                                 comp_metadata = scrape_url_metadata(url)
                                 competitors_metadata.append(comp_metadata)
                                 time.sleep(2)
@@ -715,52 +832,84 @@ if gsc_file:
                         
                         st.dataframe(comparison_df, use_container_width=True)
                         
-                        # Recomendaciones de headings con IA
+                        # Análisis de headings FALTANTES
                         st.markdown("---")
-                        st.subheader("📑 Recomendaciones de Headings para Optimizar")
+                        st.subheader(TEXTS['heading_recommendations'])
                         
-                        with st.spinner("Generando recomendaciones de estructura con IA..."):
-                            competitors_h2_sample = []
-                            for meta in competitors_metadata[:5]:
+                        with st.spinner(TEXTS['generating_headings']):
+                            # Recopilar todos los H2 de competidores
+                            all_competitor_h2 = []
+                            for meta in competitors_metadata:
                                 if meta['success'] and meta.get('h2_tags'):
-                                    competitors_h2_sample.extend(meta['h2_tags'][:3])
+                                    all_competitor_h2.extend(meta['h2_tags'])
                             
-                            heading_prompt = f"""Eres un experto SEO. Analiza esta página y recomienda una estructura de headings optimizada.
+                            # H2 actuales de la URL
+                            current_h2 = set([h.lower() for h in metadata['h2_tags']])
+                            
+                            # Encontrar H2 que tienen competidores pero tú NO
+                            missing_h2_candidates = []
+                            for h2 in all_competitor_h2:
+                                h2_lower = h2.lower()
+                                # Si no existe en tus H2 actuales
+                                if h2_lower not in current_h2:
+                                    # Y no está repetido en los candidatos
+                                    if h2 not in missing_h2_candidates:
+                                        missing_h2_candidates.append(h2)
+                            
+                            if language == "Español":
+                                heading_prompt = f"""Eres un experto SEO. Analiza los headings FALTANTES en esta página comparando con la competencia.
 
 **Keyword objetivo:** {keyword}
 
-**Headings actuales:**
-- H1: {', '.join(metadata['h1_tags'][:2]) if metadata['h1_tags'] else 'Ninguno'}
-- H2 actuales ({metadata['h2_count']}): {', '.join(metadata['h2_tags'][:5]) if metadata['h2_tags'] else 'Ninguno'}
+**H2 ACTUALES en la página (YA EXISTEN, NO recomendar):**
+{', '.join(metadata['h2_tags']) if metadata['h2_tags'] else 'Ninguno'}
 
-**Promedio competidores:**
-- H2 promedio: {avg_row['H2']:.0f}
-- Ejemplos de H2 en competidores: {', '.join(competitors_h2_sample[:8]) if competitors_h2_sample else 'No disponible'}
+**H2 que tienen los COMPETIDORES pero TÚ NO TIENES:**
+{', '.join(missing_h2_candidates[:15]) if missing_h2_candidates else 'Los competidores no tienen H2 adicionales relevantes'}
 
-**Genera:**
+**INSTRUCCIÓN CRÍTICA:** 
+Solo recomienda H2 que:
+1. Los competidores SÍ tienen
+2. Tú NO tienes actualmente
+3. Son relevantes para la keyword "{keyword}"
 
-1. **H1 recomendado** (1 solo, optimizado para la keyword)
+**NO recomiendes H2 que ya existen en la lista de "H2 ACTUALES".**
 
-2. **5-8 H2 recomendados** que deberías tener, priorizados por:
-   - Intención de búsqueda del usuario
-   - Cobertura de subtemas importantes
-   - Keywords relacionadas long-tail
-
-3. **3 H3 de ejemplo** para uno de los H2
-
-Formato:
-**H1:**
-[Tu H1 optimizado]
-
-**H2 (ordenados por prioridad):**
-1. [H2 principal]
-2. [H2 secundario]
+Genera:
+**H2 FALTANTES recomendados (5-8 máximo):**
+1. [H2 que tienen competidores pero tú no]
+2. [H2 que tienen competidores pero tú no]
 ...
 
-**H3 de ejemplo para H2 #1:**
-- [H3 ejemplo 1]
-- [H3 ejemplo 2]
-- [H3 ejemplo 3]"""
+**Justificación:**
+Explica brevemente por qué estos H2 son importantes para cubrir la intención de búsqueda."""
+                            else:
+                                heading_prompt = f"""You are an SEO expert. Analyze the MISSING headings on this page compared to competitors.
+
+**Target keyword:** {keyword}
+
+**CURRENT H2s on the page (ALREADY EXIST, DO NOT recommend):**
+{', '.join(metadata['h2_tags']) if metadata['h2_tags'] else 'None'}
+
+**H2s that COMPETITORS have but YOU DON'T:**
+{', '.join(missing_h2_candidates[:15]) if missing_h2_candidates else 'Competitors do not have additional relevant H2s'}
+
+**CRITICAL INSTRUCTION:** 
+Only recommend H2s that:
+1. Competitors DO have
+2. You DON'T currently have
+3. Are relevant to the keyword "{keyword}"
+
+**DO NOT recommend H2s that already exist in the "CURRENT H2s" list.**
+
+Generate:
+**MISSING H2s recommended (5-8 maximum):**
+1. [H2 competitors have but you don't]
+2. [H2 competitors have but you don't]
+...
+
+**Justification:**
+Briefly explain why these H2s are important to cover search intent."""
 
                             try:
                                 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -776,56 +925,89 @@ Formato:
                                 st.markdown(heading_recommendations)
                                 
                             except Exception as e:
-                                st.error(f"Error generando recomendaciones: {str(e)}")
+                                st.error(f"Error: {str(e)}")
                         
-                        # Limpiar session state
                         st.session_state['start_analysis'] = False
                         
-                        if st.button("🔄 Nueva comparativa"):
+                        if st.button(TEXTS['new_comparativa']):
                             st.session_state['top_10_urls'] = None
                             st.session_state['keyword'] = None
                             st.rerun()
             else:
-                st.warning("⚠️ No se pudo analizar la página")
+                st.warning("⚠️ Could not analyze the page")
             
-            # Botón para volver a la lista
             st.markdown("---")
-            if st.button("⬅️ Volver a la lista de URLs"):
+            if st.button(TEXTS['back_to_list']):
                 st.session_state.selected_url = None
                 st.rerun()
         
-        # Expander con info de cálculo
-        with st.expander("ℹ️ ¿Cómo se calcula la prioridad?"):
-            st.markdown("""
-            **Fórmula de Score:**
-            - 🎯 **Posición actual (50%)**: URLs en posiciones 5-10 tienen mayor prioridad que 11-20
-            - 📈 **Tráfico actual (30%)**: URLs con más clicks tienen mayor prioridad
-            - 📉 **Tendencias (20%)**: Penaliza pérdidas de posición y tráfico
-            
-            **Bonificaciones especiales:**
-            - 🚨 **+30 puntos**: Si cayó de página 1 (posiciones 1-10) a página 2 (11-20)
-            - ⚠️ **+15 puntos**: Si perdió más de 3 posiciones
-            - 📊 **+10 puntos**: Si perdió más del 20% de tráfico
-            
-            **Colores de posición:**
-            - 🔴 Rojo: Empeoró (perdió posiciones)
-            - 🟢 Verde: Mejoró (ganó posiciones)
-            - ⚪ Blanco: Sin cambios
-            """)
+        with st.expander(f"ℹ️ {TEXTS['priority_calculation']}"):
+            if language == "Español":
+                st.markdown("""
+                **Fórmula de Score:**
+                - 🎯 **Posición actual (50%)**: URLs en posiciones 5-10 tienen mayor prioridad que 11-20
+                - 📈 **Tráfico actual (30%)**: URLs con más clicks tienen mayor prioridad
+                - 📉 **Tendencias (20%)**: Penaliza pérdidas de posición y tráfico
+                
+                **Bonificaciones especiales:**
+                - 🚨 **+30 puntos**: Si cayó de página 1 (posiciones 1-10) a página 2 (11-20)
+                - ⚠️ **+15 puntos**: Si perdió más de 3 posiciones
+                - 📊 **+10 puntos**: Si perdió más del 20% de tráfico
+                
+                **Indicadores de posición:**
+                - 🟢 Verde "Subió X pos": MEJORÓ (ej: de posición 12 a posición 8)
+                - 🔴 Rojo "Cayó X pos": EMPEORÓ (ej: de posición 8 a posición 12)
+                - ⚪ Blanco: Sin cambios
+                
+                **Recuerda:** En Google, posición 1 es la mejor, posición 20 es peor.
+                """)
+            else:
+                st.markdown("""
+                **Score Formula:**
+                - 🎯 **Current position (50%)**: URLs in positions 5-10 have higher priority than 11-20
+                - 📈 **Current traffic (30%)**: URLs with more clicks have higher priority
+                - 📉 **Trends (20%)**: Penalizes position and traffic losses
+                
+                **Special bonuses:**
+                - 🚨 **+30 points**: If dropped from page 1 (positions 1-10) to page 2 (11-20)
+                - ⚠️ **+15 points**: If lost more than 3 positions
+                - 📊 **+10 points**: If lost more than 20% traffic
+                
+                **Position indicators:**
+                - 🟢 Green "Rose X pos": IMPROVED (ex: from position 12 to position 8)
+                - 🔴 Red "Fell X pos": WORSENED (ex: from position 8 to position 12)
+                - ⚪ White: No change
+                
+                **Remember:** In Google, position 1 is best, position 20 is worse.
+                """)
                 
 else:
-    st.info("👆 Sube tu CSV de Google Search Console para comenzar")
+    st.info(f"👆 {TEXTS['upload_csv']}")
     
-    with st.expander("📖 ¿Cómo exportar desde GSC?"):
-        st.markdown("""
-        ### Tutorial paso a paso:
-        
-        1. Ve a **Google Search Console** → **Performance** → **Pages**
-        2. Click en **Compare** (arriba derecha)
-        3. Selecciona: **Últimos 28 días** vs **28 días anteriores**
-        4. Click en **Export** → **Download CSV**
-        
-        ---
-        
-        💡 **Tip:** Asegúrate de comparar periodos iguales para obtener datos precisos de tendencias.
-        """)
+    with st.expander(f"📖 {TEXTS['tutorial']}"):
+        if language == "Español":
+            st.markdown("""
+            ### Tutorial paso a paso:
+            
+            1. Ve a **Google Search Console** → **Performance** → **Pages**
+            2. Click en **Compare** (arriba derecha)
+            3. Selecciona: **Últimos 28 días** vs **28 días anteriores**
+            4. Click en **Export** → **Download CSV**
+            
+            ---
+            
+            💡 **Tip:** Asegúrate de comparar periodos iguales para obtener datos precisos de tendencias.
+            """)
+        else:
+            st.markdown("""
+            ### Step by step tutorial:
+            
+            1. Go to **Google Search Console** → **Performance** → **Pages**
+            2. Click **Compare** (top right)
+            3. Select: **Last 28 days** vs **Previous 28 days**
+            4. Click **Export** → **Download CSV**
+            
+            ---
+            
+            💡 **Tip:** Make sure to compare equal periods to get accurate trend data.
+            """)
