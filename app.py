@@ -724,7 +724,6 @@ if gsc_file:
                 st.markdown("---")
                 st.subheader(TEXTS['ai_recommendations'])
                 
-                # Verificar API key
                 user_api_key = st.session_state.get('groq_api_key', '')
                 
                 if not user_api_key:
@@ -884,11 +883,9 @@ if gsc_file:
                         
                         st.dataframe(comparison_df, use_container_width=True)
                         
-                        # Análisis de headings FALTANTES
                         st.markdown("---")
                         st.subheader(TEXTS['heading_recommendations'])
                         
-                        # Verificar API key
                         user_api_key = st.session_state.get('groq_api_key', '')
                         
                         if not user_api_key:
@@ -1040,30 +1037,108 @@ Briefly explain why these H2s are important to cover search intent."""
 else:
     st.info(f"👆 {TEXTS['upload_csv']}")
     
-    with st.expander(f"📖 {TEXTS['tutorial']}"):
+    with st.expander(f"📖 {TEXTS['tutorial']}", expanded=True):
         if language == "Español":
             st.markdown("""
-            ### Tutorial paso a paso:
+            ### 📋 Tutorial paso a paso para exportar datos de Google Search Console
             
-            1. Ve a **Google Search Console** → **Performance** → **Pages**
-            2. Click en **Compare** (arriba derecha)
-            3. Selecciona: **Últimos 28 días** vs **28 días anteriores**
-            4. Click en **Export** → **Download CSV**
+            #### **Paso 1: Accede a Google Search Console**
+            - Ve a [search.google.com/search-console](https://search.google.com/search-console)
+            - Selecciona tu propiedad (sitio web)
+            
+            #### **Paso 2: Navega a Pages**
+            - En el menú lateral izquierdo, haz click en **"Performance"** (Rendimiento)
+            - Haz click en la pestaña **"Pages"** (Páginas) en la parte superior
+            
+            #### **Paso 3: Configura la comparación de fechas**
+            - En la parte superior, verás el selector de fechas
+            - Haz click en el selector de fechas actual (ej: "Last 3 months")
+            - Selecciona: **"Last 28 days"** (Últimos 28 días)
+            - Activa la opción **"Compare"** (Comparar)
+            - En el segundo selector que aparece, elige: **"Previous period"** (Período anterior)
+            - Esto comparará los últimos 28 días con los 28 días anteriores
+            - Haz click en **"Apply"** (Aplicar)
+            
+            #### **Paso 4: Exporta los datos**
+            - En la esquina superior derecha de la tabla, haz click en el ícono de **exportar** (📥)
+            - Selecciona **"Download CSV"** (Descargar CSV)
+            - El archivo se descargará con el nombre: **"Pages.csv"** o similar
+            
+            #### **Paso 5: Sube el archivo aquí**
+            - Arrastra el archivo **"Pages.csv"** al área de carga arriba ☝️
+            - O haz click en "Browse files" para seleccionarlo desde tu computadora
             
             ---
             
-            💡 **Tip:** Asegúrate de comparar periodos iguales para obtener datos precisos de tendencias.
+            ### 💡 Tips importantes:
+            
+            ✅ **Asegúrate de:**
+            - Estar en la pestaña **"Pages"** (no en "Queries" o "Countries")
+            - Activar la opción **"Compare"** para ver cambios entre períodos
+            - Seleccionar períodos de **igual duración** (28 días vs 28 días)
+            - Exportar el archivo en formato **CSV** (no Excel)
+            
+            ❌ **Errores comunes:**
+            - Exportar desde "Queries" en lugar de "Pages"
+            - No activar la comparación (botón "Compare")
+            - Usar períodos de diferente duración (ej: 28 días vs 3 meses)
+            - Exportar sin datos suficientes (necesitas tráfico en tu sitio)
+            
+            ---
+            
+            ### 🎥 ¿Necesitas ayuda visual?
+            
+            Si tienes dudas, busca en YouTube: **"How to export GSC pages data"**
             """)
         else:
             st.markdown("""
-            ### Step by step tutorial:
+            ### 📋 Step-by-step tutorial to export Google Search Console data
             
-            1. Go to **Google Search Console** → **Performance** → **Pages**
-            2. Click **Compare** (top right)
-            3. Select: **Last 28 days** vs **Previous 28 days**
-            4. Click **Export** → **Download CSV**
+            #### **Step 1: Access Google Search Console**
+            - Go to [search.google.com/search-console](https://search.google.com/search-console)
+            - Select your property (website)
+            
+            #### **Step 2: Navigate to Pages**
+            - In the left sidebar menu, click on **"Performance"**
+            - Click on the **"Pages"** tab at the top
+            
+            #### **Step 3: Configure date comparison**
+            - At the top, you'll see the date selector
+            - Click on the current date selector (e.g., "Last 3 months")
+            - Select: **"Last 28 days"**
+            - Enable the **"Compare"** option
+            - In the second selector that appears, choose: **"Previous period"**
+            - This will compare the last 28 days with the previous 28 days
+            - Click **"Apply"**
+            
+            #### **Step 4: Export the data**
+            - In the top right corner of the table, click the **export** icon (📥)
+            - Select **"Download CSV"**
+            - The file will download with the name: **"Pages.csv"** or similar
+            
+            #### **Step 5: Upload the file here**
+            - Drag the **"Pages.csv"** file to the upload area above ☝️
+            - Or click "Browse files" to select it from your computer
             
             ---
             
-            💡 **Tip:** Make sure to compare equal periods to get accurate trend data.
+            ### 💡 Important tips:
+            
+            ✅ **Make sure to:**
+            - Be in the **"Pages"** tab (not "Queries" or "Countries")
+            - Enable the **"Compare"** option to see changes between periods
+            - Select periods of **equal duration** (28 days vs 28 days)
+            - Export the file in **CSV** format (not Excel)
+            
+            ❌ **Common mistakes:**
+            - Exporting from "Queries" instead of "Pages"
+            - Not enabling comparison ("Compare" button)
+            - Using periods of different duration (e.g., 28 days vs 3 months)
+            - Exporting without sufficient data (you need traffic on your site)
+            
+            ---
+            
+            ### 🎥 Need visual help?
+            
+            If you have questions, search on YouTube: **"How to export GSC pages data"**
             """)
