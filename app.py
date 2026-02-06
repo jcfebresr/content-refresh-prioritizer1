@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup
 import json
 import time
 import re
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 st.set_page_config(page_title="Content Refresh Prioritizer", page_icon="🎯", layout="wide")
 
@@ -48,7 +50,6 @@ else:
         help="Your API key is private and not saved"
     )
 
-# Guardar API key en session state
 if api_key_input:
     st.session_state['groq_api_key'] = api_key_input
 
@@ -99,14 +100,16 @@ if language == "Español":
         'for_keyword': 'URLs para la keyword:',
         'analyzing_position': 'Analizando posición',
         'heading_recommendations': '📑 Recomendaciones de Headings Faltantes',
+        'heading_structure': '📑 Estructura de Encabezados de la Competencia',
+        'heading_structure_desc': 'Analiza cómo estructuran su contenido los competidores del Top 10',
         'generating_headings': 'Generando análisis de headings faltantes...',
         'new_comparativa': '🔄 Nueva comparativa',
         'back_to_list': '⬅️ Volver a la lista de URLs',
         'priority_calculation': '¿Cómo se calcula la prioridad?',
         'tutorial': '¿Cómo exportar desde GSC?',
         'upload_csv': 'Sube tu CSV de Google Search Console para comenzar',
-        'fell': 'Cayó',
-        'rose': 'Subió',
+        'fell': 'Empeoró',
+        'rose': 'Mejoró',
         'pos': 'pos',
         'no_change': 'Sin cambio',
         'api_key_required': '⚠️ Necesitas ingresar tu Groq API Key en el sidebar para usar las recomendaciones con IA',
@@ -158,19 +161,32 @@ else:
         'for_keyword': 'URLs for keyword:',
         'analyzing_position': 'Analyzing position',
         'heading_recommendations': '📑 Missing Headings Recommendations',
+        'heading_structure': '📑 Competitor Heading Structure',
+        'heading_structure_desc': 'Analyze how Top 10 competitors structure their content',
         'generating_headings': 'Generating missing headings analysis...',
         'new_comparativa': '🔄 New comparison',
         'back_to_list': '⬅️ Back to URL list',
         'priority_calculation': 'How is priority calculated?',
         'tutorial': 'How to export from GSC?',
         'upload_csv': 'Upload your Google Search Console CSV to start',
-        'fell': 'Fell',
-        'rose': 'Rose',
+        'fell': 'Worsened',
+        'rose': 'Improved',
         'pos': 'pos',
         'no_change': 'No change',
         'api_key_required': '⚠️ You need to enter your Groq API Key in the sidebar to use AI recommendations',
         'api_key_invalid': '❌ Invalid API Key. Verify you copied it correctly from console.groq.com'
     }
+
+def get_random_user_agent():
+    """Retorna un User-Agent aleatorio para evitar bloqueos"""
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36'
+    ]
+    return random.choice(user_agents)
 
 def get_groq_insight(url, metrics, metadata, lang, api_key):
     if not api_key:
@@ -259,6 +275,7 @@ def extract_domain(url):
     return None
 
 def scrape_url_metadata(url, target_domain=None):
+    """Scraping mejorado con User-Agent aleatorio y mejor extracción de headings"""
     try:
         if not url.startswith('http'):
             url = 'https://' + url
@@ -267,19 +284,23 @@ def scrape_url_metadata(url, target_domain=None):
             raise ValueError("URL inválida")
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9'
+            'User-Agent': get_random_user_agent(),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.google.com/'
         }
         
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response = requests.get(url, headers=headers, timeout=6, allow_redirects=True)
         response.raise_for_status()
         
-        content_type = response.headers.get('content-type', '').lower()
-        if 'text/html' not in content_type:
-            raise ValueError(f"No es HTML: {content_type}")
+        if response.encoding is None:
+            response.encoding = 'utf-8'
         
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Limpiar antes de extraer
+        for script in soup(['script', 'style', 'nav', 'footer', 'aside', 'form']):
+            script.decompose()
         
         title = soup.find('title')
         title_text = title.get_text().strip() if title else ""
@@ -287,16 +308,14 @@ def scrape_url_metadata(url, target_domain=None):
         meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
         description = meta_desc.get('content', '').strip() if meta_desc else ""
         
-        h1_tags = []
-        h2_tags = []
-        h3_tags = []
+        # Extracción mejorada de headers
+        h1_tags = [h.get_text(" ", strip=True) for h in soup.find_all('h1') if h.get_text(strip=True)]
+        h2_tags = [h.get_text(" ", strip=True) for h in soup.find_all('h2') if h.get_text(strip=True)]
+        h3_tags = [h.get_text(" ", strip=True) for h in soup.find_all('h3') if h.get_text(strip=True)]
         
-        try:
-            h1_tags = [h.get_text().strip() for h in soup.find_all('h1') if h.get_text().strip()][:20]
-            h2_tags = [h.get_text().strip() for h in soup.find_all('h2') if h.get_text().strip()][:30]
-            h3_tags = [h.get_text().strip() for h in soup.find_all('h3') if h.get_text().strip()][:30]
-        except:
-            pass
+        # Word count
+        text = soup.get_text(" ", strip=True)
+        words = len(text.split())
         
         schemas = []
         try:
@@ -325,15 +344,6 @@ def scrape_url_metadata(url, target_domain=None):
                                 faqs.append(question)
                 except:
                     continue
-        except:
-            pass
-        
-        words = 0
-        try:
-            for script in soup(['script', 'style', 'nav', 'footer', 'header']):
-                script.decompose()
-            text = soup.get_text()
-            words = len(text.split())
         except:
             pass
         
@@ -401,9 +411,9 @@ def scrape_url_metadata(url, target_domain=None):
             'internal_links': internal_links
         }
         
-    except:
+    except Exception as e:
         return {
-            'success': False, 'url': url, 'error': 'Error',
+            'success': False, 'url': url, 'error': str(e),
             'title': '', 'title_length': 0, 'description': '', 'description_length': 0,
             'h1_count': 0, 'h1_tags': [], 'h2_count': 0, 'h2_tags': [],
             'h3_count': 0, 'h3_tags': [], 'word_count': 0,
@@ -431,9 +441,10 @@ def recommend_internal_links(current_url, all_results_df, n=3):
     return recommendations
 
 def get_google_top_10(keyword, debug=False):
+    """Mejorado con User-Agent aleatorio"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': get_random_user_agent()
         }
         
         url = f"https://html.duckduckgo.com/html/?q={keyword.replace(' ', '+')}"
@@ -459,14 +470,15 @@ def get_google_top_10(keyword, debug=False):
     
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': get_random_user_agent(),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'es-ES,es;q=0.9,en-US,en;q=0.8',
             'Referer': 'https://www.google.com/',
-            'DNT': '1'
+            'DNT': '1',
+            'Cookie': 'CONSENT=YES+cb.20210720-07-p0.en+FX+417;'
         }
         
-        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=20"
+        url = f"https://www.google.com/search?q={keyword.replace(' ', '+')}&num=15"
         
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
@@ -602,7 +614,6 @@ if gsc_file:
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
     
-    # FASE 1: Mostrar tabla de URLs
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         
@@ -648,7 +659,6 @@ if gsc_file:
             st.session_state.selected_url = results.iloc[selected_index - 1]
             st.rerun()
         
-        # FASE 2: Análisis profundo
         if st.session_state.selected_url is not None:
             selected = st.session_state.selected_url
             
@@ -819,6 +829,7 @@ if gsc_file:
                             else:
                                 st.error(f"❌ {TEXTS['need_3_urls']}")
                 
+                # ANÁLISIS PARALELO DE COMPETIDORES
                 if st.session_state.get('start_analysis'):
                     top_10_urls = st.session_state.get('top_10_urls', [])
                     keyword = st.session_state.get('keyword', '')
@@ -827,62 +838,103 @@ if gsc_file:
                         st.markdown("---")
                         st.info(f"{TEXTS['analyzing_urls']} {len(top_10_urls)} {TEXTS['for_keyword']} **{keyword}**")
                         
-                        comparison_data = []
+                        # Barra de progreso
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
                         competitors_metadata = []
+                        
+                        # EJECUCIÓN PARALELA
+                        def fetch_url(url):
+                            return scrape_url_metadata(url)
+                        
+                        with ThreadPoolExecutor(max_workers=5) as executor:
+                            future_to_url = {executor.submit(fetch_url, url): url for url in top_10_urls[:10]}
+                            
+                            completed_count = 0
+                            for future in as_completed(future_to_url):
+                                data = future.result()
+                                competitors_metadata.append(data)
+                                
+                                completed_count += 1
+                                progress = completed_count / len(top_10_urls[:10])
+                                progress_bar.progress(progress)
+                                status_text.text(f"Analizando: {data['url'][:40]}... ({completed_count}/{len(top_10_urls[:10])})")
+                        
+                        status_text.empty()
+                        progress_bar.empty()
+                        
+                        # Reordenar para mantener orden original
+                        competitors_metadata.sort(key=lambda x: top_10_urls.index(x['url']) if x['url'] in top_10_urls else 999)
+                        
+                        # Tabla comparativa
+                        comparison_data = []
                         
                         comparison_data.append({
                             'Posición': f"#{int(selected['position_current'])} (TU URL)",
-                            'Title Length': metadata['title_length'],
-                            'Desc Length': metadata['description_length'],
-                            'Word Count': metadata['word_count'],
+                            'Title': metadata['title'],
                             'H1': metadata['h1_count'],
                             'H2': metadata['h2_count'],
                             'H3': metadata['h3_count'],
-                            'Schemas': metadata['schemas_count'],
-                            'FAQs': metadata['faqs_count']
+                            'Words': metadata['word_count']
                         })
                         
-                        progress_bar = st.progress(0)
-                        for idx, url in enumerate(top_10_urls[:10], 1):
-                            with st.spinner(f"{TEXTS['analyzing_position']} #{idx}: {url[:50]}..."):
-                                comp_metadata = scrape_url_metadata(url)
-                                competitors_metadata.append(comp_metadata)
-                                time.sleep(2)
-                                
+                        for idx, meta in enumerate(competitors_metadata):
+                            if meta['success']:
                                 comparison_data.append({
-                                    'Posición': f"#{idx}",
-                                    'Title Length': comp_metadata['title_length'],
-                                    'Desc Length': comp_metadata['description_length'],
-                                    'Word Count': comp_metadata['word_count'],
-                                    'H1': comp_metadata['h1_count'],
-                                    'H2': comp_metadata['h2_count'],
-                                    'H3': comp_metadata['h3_count'],
-                                    'Schemas': comp_metadata['schemas_count'],
-                                    'FAQs': comp_metadata['faqs_count']
+                                    'Posición': f"#{idx+1}",
+                                    'Title': meta['title'],
+                                    'H1': meta['h1_count'],
+                                    'H2': meta['h2_count'],
+                                    'H3': meta['h3_count'],
+                                    'Words': meta['word_count']
                                 })
-                                
-                                progress_bar.progress(idx / len(top_10_urls[:10]))
-                        
-                        progress_bar.empty()
                         
                         comparison_df = pd.DataFrame(comparison_data)
+                        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
                         
-                        avg_row = {
-                            'Posición': '📊 PROMEDIO TOP 10',
-                            'Title Length': int(comparison_df.iloc[1:]['Title Length'].mean()),
-                            'Desc Length': int(comparison_df.iloc[1:]['Desc Length'].mean()),
-                            'Word Count': int(comparison_df.iloc[1:]['Word Count'].mean()),
-                            'H1': round(comparison_df.iloc[1:]['H1'].mean(), 1),
-                            'H2': round(comparison_df.iloc[1:]['H2'].mean(), 1),
-                            'H3': round(comparison_df.iloc[1:]['H3'].mean(), 1),
-                            'Schemas': round(comparison_df.iloc[1:]['Schemas'].mean(), 1),
-                            'FAQs': round(comparison_df.iloc[1:]['FAQs'].mean(), 1)
-                        }
+                        # VISUALIZADOR DE ESTRUCTURA DE HEADINGS
+                        st.markdown("---")
+                        st.subheader(TEXTS['heading_structure'])
+                        st.markdown(TEXTS['heading_structure_desc'])
                         
-                        comparison_df = pd.concat([comparison_df, pd.DataFrame([avg_row])], ignore_index=True)
+                        tabs = st.tabs([f"#{i+1}" for i in range(len(competitors_metadata))])
                         
-                        st.dataframe(comparison_df, use_container_width=True)
+                        for i, tab in enumerate(tabs):
+                            with tab:
+                                comp = competitors_metadata[i]
+                                if comp['success']:
+                                    st.markdown(f"**URL:** [{comp['url']}]({comp['url']})")
+                                    st.markdown(f"**Title:** {comp['title']}")
+                                    
+                                    col_h1, col_structure = st.columns([1, 3])
+                                    
+                                    with col_h1:
+                                        st.info(f"**Word Count:** {comp['word_count']}")
+                                        st.markdown("### H1")
+                                        if comp['h1_tags']:
+                                            for h1 in comp['h1_tags']:
+                                                st.write(f"• {h1}")
+                                        else:
+                                            st.warning("No H1 found")
+                                    
+                                    with col_structure:
+                                        st.markdown("### Estructura H2 y H3")
+                                        if not comp['h2_tags'] and not comp['h3_tags']:
+                                            st.warning("No se detectaron H2 o H3.")
+                                        
+                                        for h2 in comp['h2_tags']:
+                                            st.markdown(f"**H2: {h2}**")
+                                        
+                                        if comp['h3_tags']:
+                                            st.markdown("---")
+                                            st.caption("Subtemas (H3):")
+                                            for h3 in comp['h3_tags']:
+                                                st.markdown(f"- *{h3}*")
+                                else:
+                                    st.error(f"No se pudo analizar esta URL: {comp.get('error', 'Error desconocido')}")
                         
+                        # Recomendaciones de headings faltantes
                         st.markdown("---")
                         st.subheader(TEXTS['heading_recommendations'])
                         
@@ -1008,11 +1060,11 @@ Briefly explain why these H2s are important to cover search intent."""
                 - 📊 **+10 puntos**: Si perdió más del 20% de tráfico
                 
                 **Indicadores de posición:**
-                - 🟢 Verde "Subió X pos": MEJORÓ (ej: de posición 12 a posición 8)
-                - 🔴 Rojo "Cayó X pos": EMPEORÓ (ej: de posición 8 a posición 12)
+                - 🟢 Verde "Mejoró X pos": La posición BAJÓ en número (ej: de 12 a 8) = MEJOR ranking
+                - 🔴 Rojo "Empeoró X pos": La posición SUBIÓ en número (ej: de 8 a 12) = PEOR ranking
                 - ⚪ Blanco: Sin cambios
                 
-                **Recuerda:** En Google, posición 1 es la mejor, posición 20 es peor.
+                **Recuerda:** En Google, posición 1 es la mejor, posición 100 es la peor.
                 """)
             else:
                 st.markdown("""
@@ -1027,11 +1079,11 @@ Briefly explain why these H2s are important to cover search intent."""
                 - 📊 **+10 points**: If lost more than 20% traffic
                 
                 **Position indicators:**
-                - 🟢 Green "Rose X pos": IMPROVED (ex: from position 12 to position 8)
-                - 🔴 Red "Fell X pos": WORSENED (ex: from position 8 to position 12)
+                - 🟢 Green "Improved X pos": Position number DECREASED (ex: from 12 to 8) = BETTER ranking
+                - 🔴 Red "Worsened X pos": Position number INCREASED (ex: from 8 to 12) = WORSE ranking
                 - ⚪ White: No change
                 
-                **Remember:** In Google, position 1 is best, position 20 is worse.
+                **Remember:** In Google, position 1 is best, position 100 is worst.
                 """)
                 
 else:
